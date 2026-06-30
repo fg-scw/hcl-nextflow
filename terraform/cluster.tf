@@ -1,16 +1,18 @@
 # ── VPC ───────────────────────────────────────────────────────────────────────
 resource "scaleway_vpc" "main" {
-  name   = "${var.cluster_name}-vpc"
-  region = var.scaleway_region
-  tags   = var.tags
+  name       = "${var.cluster_name}-vpc"
+  region     = var.scaleway_region
+  project_id = var.scw_project_id
+  tags       = var.tags
 }
 
 # ── Private Network ───────────────────────────────────────────────────────────
 resource "scaleway_vpc_private_network" "main" {
-  name   = "${var.cluster_name}-pn"
-  vpc_id = scaleway_vpc.main.id
-  region = var.scaleway_region
-  tags   = var.tags
+  name       = "${var.cluster_name}-pn"
+  vpc_id     = scaleway_vpc.main.id
+  region     = var.scaleway_region
+  project_id = var.scw_project_id
+  tags       = var.tags
 
   ipv4_subnet {
     subnet = var.vpc_cidr
@@ -23,6 +25,7 @@ resource "scaleway_k8s_cluster" "main" {
   version            = var.k8s_version
   cni                = "cilium"
   region             = var.scaleway_region
+  project_id         = var.scw_project_id
   private_network_id = scaleway_vpc_private_network.main.id
 
   # Nettoie les LBs, IPs et volumes créés par le cluster lors du destroy.
