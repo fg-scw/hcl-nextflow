@@ -74,7 +74,10 @@ Le stockage partagé utilise le **CSI driver SFS natif Kapsule** (`filestorage.c
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 # Remplir : scw_access_key, scw_secret_key, scw_project_id
 
-# 2. Déployer l'infrastructure (~10-15 min)
+# 2. Déployer l'infrastructure (~15-20 min)
+#    make cluster s'exécute en 2 phases :
+#    - Phase 1 : cluster Scaleway + node pools + kubeconfig (~10-15 min)
+#    - Phase 2 : namespace, RBAC, PVCs SFS, ConfigMap, Secret (~2 min)
 make init
 make cluster
 
@@ -83,8 +86,8 @@ make kubeconfig
 kubectl get nodes
 
 # 4. Vérifier le driver SFS CSI et les PVCs
-kubectl get daemonset -n kube-system filestorage-csi-node
-kubectl get pvc -n bioinformatics
+kubectl get daemonset -n kube-system filestorage-csi-node   # doit être Running
+kubectl get pvc -n bioinformatics                           # doit être Bound
 
 # 5. Générer l'index STAR GRCh38 (one-shot, ~4-6h)
 make upload-reference
@@ -145,17 +148,19 @@ make clean             # terraform destroy (⚠ supprime cluster et données)
 - `STAR_GENOMEGENERATE` : 8 vCPU / 56 GB (génération one-shot d'index), volume reference en RW
 - Endpoint S3 Scaleway configuré dans le bloc `aws.client`
 
-**Scratch SBS haute IOPS (production)** : décommenter le bloc `volumeClaim` dans `withName:STAR_ALIGN` et supprimer `scratch = true` pour utiliser des PVC SBS dynamiques (`star-scratch`, 2 To, 25 687 IOPS) au lieu du workdir NFS.
+**Scratch SBS haute IOPS (production)** : décommenter le bloc `volumeClaim` dans `withName:STAR_ALIGN` et supprimer `scratch = true` pour utiliser des PVC SBS dynamiques (`star-scratch`, 2 To, 25 687 IOPS) au lieu du workdir SFS.
 
 ---
 
 ## Contraintes connues
 
+**Déploiement en deux phases** : le provider Terraform Kubernetes ne peut pas s'initialiser avant que le cluster Kapsule existe. `make cluster` exécute donc automatiquement deux `terraform apply` successifs — phase 1 crée le cluster et écrit le kubeconfig, phase 2 déploie les ressources Kubernetes. Ne pas interrompre entre les deux phases.
+
 **STAR OOM** : 40 GB minimum stricts par job (index GRCh38 chargé intégralement en RAM). En dessous, STAR échoue sans message d'erreur explicite. Le POC utilise 52 GB/job sur `POP2-HM-8C-64G` (1 job/nœud). Pour augmenter le packing en production : `POP2-HM-32C-256G` (4 jobs/nœud).
 
 **Pas de Spot sur Kapsule** : Scaleway ne propose pas d'instances préemptibles. Le Cluster Autoscaler scale le pool `star-compute` à 0 entre les runs. Nextflow `-resume` gère les interruptions.
 
-**SFS CSI driver** : activé par le tag `scw-filestorage-csi` au niveau du cluster. Vérifier avec `kubectl get daemonset -n kube-system filestorage-csi-node` que le DaemonSet tourne bien sur les nœuds après déploiement. Requiert la famille POP2 — BASIC3/MEMORY3 non compatibles.
+**SFS CSI driver** : activé par le tag `scw-filestorage-csi` au niveau du cluster. Requiert la famille POP2 — BASIC3/MEMORY3 non compatibles. Vérifier après déploiement : `kubectl get daemonset -n kube-system filestorage-csi-node`.
 
 **Index STAR pré-généré** : après `make upload-reference`, pointer `star_index: "/data/reference/star_index/GRCh38_150bp"` dans `params.yaml` pour éviter de regénérer l'index (~4-6h) à chaque run.
 
