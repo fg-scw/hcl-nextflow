@@ -42,7 +42,7 @@ resource "scaleway_k8s_pool" "star_compute" {
   cluster_id  = scaleway_k8s_cluster.main.id
   name        = "star-compute"
   node_type   = var.compute_node_type
-  size        = 0
+  size        = 1   # Kapsule refuse size=0 à la création — le Cluster Autoscaler ramène à 0 après 10 min d'inactivité
   min_size    = 0
   max_size    = var.compute_max_nodes
   autoscaling = true
