@@ -1,0 +1,36 @@
+# Copier vers terraform.tfvars et remplir les valeurs.
+# Ne jamais committer terraform.tfvars (contient des secrets).
+
+scw_access_key = "SCW_ACCESS_KEY_HERE"
+scw_secret_key = "SCW_SECRET_KEY_HERE"
+scw_project_id = "PROJECT_ID_HERE"
+
+# ── Infrastructure ────────────────────────────────────────────────────────────
+cluster_name    = "nf-kapsule"
+scaleway_region = "fr-par"
+scaleway_zone   = "fr-par-1"
+k8s_version     = "1.32.0"
+
+# ── Compute ───────────────────────────────────────────────────────────────────
+# Production cible : 64 vCPU / 512 GB — 4 jobs STAR par nœud à 16 vCPU/48 GB
+orchestrator_node_type = "BASIC3-X4C-16G"
+compute_node_type      = "MEMORY3-X64C-512G"
+compute_max_nodes      = 5
+
+# Variante dev/validation (moins coûteuse, 2 jobs STAR par nœud)
+# compute_node_type  = "MEMORY3-X32C-256G"
+# compute_max_nodes  = 3
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+# Production : 2 To SFS workdir + 500 Go SFS reference
+workdir_size_gb      = 2000
+reference_size_gb    = 500
+star_scratch_size_gi = 2000
+
+# Tests rapides (réduire pour limiter les coûts)
+# workdir_size_gb      = 200
+# reference_size_gb    = 100
+# star_scratch_size_gi = 200
+
+# ── Tags ──────────────────────────────────────────────────────────────────────
+tags = ["env=poc", "project=nf-rnaseq", "pipeline=nf-core-rnaseq", "owner=hcl"]

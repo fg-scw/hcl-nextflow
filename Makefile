@@ -1,0 +1,69 @@
+TERRAFORM_DIR := terraform
+SCRIPTS_DIR   := scripts
+TF            := terraform -chdir=$(TERRAFORM_DIR)
+KUBECONFIG    ?= $(HOME)/.kube/config-nf-kapsule
+NAMESPACE     := bioinformatics
+
+export KUBECONFIG
+
+.PHONY: init cluster kubeconfig status upload-reference run-pipeline clean \
+        watch-pods watch-nodes scale-check logs-autoscaler fmt outputs
+
+# ── Infrastructure ────────────────────────────────────────────────────────────
+
+init: ## Initialiser Terraform (providers)
+	$(TF) init -upgrade
+
+cluster: ## Déployer le cluster Kapsule + node pools + SFS + S3 + IAM + K8s resources
+	$(TF) apply -var-file=terraform.tfvars -auto-approve
+
+kubeconfig: ## Configurer kubectl avec le kubeconfig du cluster
+	@CLUSTER_ID=$$($(TF) output -raw cluster_id) && \
+	scw k8s kubeconfig install $$CLUSTER_ID --filepath $(KUBECONFIG)
+	@echo "KUBECONFIG=$(KUBECONFIG)"
+	kubectl get nodes -o wide
+
+status: ## État des nœuds, PVCs et pods du namespace bioinformatics
+	@echo "\n=== Nœuds ===" && kubectl get nodes -o wide
+	@echo "\n=== PVCs ===" && kubectl get pvc -n $(NAMESPACE)
+	@echo "\n=== Pods ===" && kubectl get pods -n $(NAMESPACE)
+	@kubectl top nodes 2>/dev/null || true
+
+clean: ## Destroy complet (⚠ supprime cluster, données S3 et volumes SFS)
+	$(TF) destroy -var-file=terraform.tfvars -auto-approve
+
+# ── Pipeline ──────────────────────────────────────────────────────────────────
+
+upload-reference: ## Générer l'index STAR GRCh38 dans le PVC reference (one-shot, ~4-6h)
+	bash $(SCRIPTS_DIR)/bootstrap-reference.sh
+
+run-pipeline: ## Lancer nf-core/rnaseq sur le cluster Kapsule
+	bash $(SCRIPTS_DIR)/run-pipeline.sh
+
+# ── Diagnostic ────────────────────────────────────────────────────────────────
+
+watch-pods: ## Surveiller les pods du namespace bioinformatics en temps réel
+	kubectl get pods -n $(NAMESPACE) -w
+
+watch-nodes: ## Surveiller les nœuds et leur type (scale up/down)
+	watch -n 10 kubectl get nodes \
+	  -o custom-columns=\
+'NAME:.metadata.name,\
+TYPE:.metadata.labels.node\.kubernetes\.io/instance-type,\
+POOL:.metadata.labels.k8s\.scaleway\.com/pool-name,\
+STATUS:.status.conditions[-1].type'
+
+scale-check: ## État du Cluster Autoscaler et événements récents
+	@echo "\n=== Autoscaler status ===" && \
+	kubectl describe configmap -n kube-system cluster-autoscaler-status 2>/dev/null | head -40 || true
+	@echo "\n=== Événements récents ===" && \
+	kubectl get events -n $(NAMESPACE) --sort-by='.lastTimestamp' | tail -20
+
+logs-autoscaler: ## Logs du Cluster Autoscaler
+	kubectl logs -n kube-system -l app=cluster-autoscaler --tail=50 -f
+
+fmt: ## Formater les fichiers Terraform
+	$(TF) fmt -recursive
+
+outputs: ## Afficher tous les outputs Terraform
+	$(TF) output

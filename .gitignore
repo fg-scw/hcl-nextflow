@@ -1,0 +1,34 @@
+# Secrets et credentials — NE JAMAIS COMMITTER
+terraform/terraform.tfvars
+terraform.tfvars
+*.tfvars
+!terraform.tfvars.example
+
+# État Terraform — contient des credentials en clair
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+
+# Cache Terraform (binaires providers — volumineux)
+terraform/.terraform/
+.terraform/
+# NB : .terraform.lock.hcl est intentionnellement committé (pin des versions)
+
+# Kubeconfig généré
+~/.kube/config-nf-kapsule
+*.kubeconfig
+
+# Rapports Nextflow (locaux, trop volumineux pour git)
+reports/
+.nextflow/
+.nextflow.log*
+work/
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~

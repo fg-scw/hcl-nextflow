@@ -1,0 +1,46 @@
+# nf-core/rnaseq — paramètres par run
+# Adapter les valeurs avant chaque lancement.
+# Référence : https://nf-co.re/rnaseq/parameters
+
+# ── Données d'entrée ──────────────────────────────────────────────────────────
+# Samplesheet CSV au format nf-core :
+# sample,fastq_1,fastq_2,strandedness
+# S001,s3://nf-kapsule-input/S001_R1.fastq.gz,s3://nf-kapsule-input/S001_R2.fastq.gz,auto
+input: "s3://nf-kapsule-input/samplesheet.csv"
+
+# ── Génome de référence ───────────────────────────────────────────────────────
+# Option A : laisser nf-core télécharger et indexer (génère l'index dans le workdir)
+genome: "GRCh38"
+
+# Option B : pointer vers un index STAR pré-généré dans le volume reference
+# (plus rapide si bootstrap-reference.sh a été exécuté)
+# star_index: "/data/reference/star_index/GRCh38_150bp"
+# gtf: "/data/reference/Homo_sapiens.GRCh38.110.gtf"
+# fasta: "/data/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa"
+
+# ── Répertoire de sortie ──────────────────────────────────────────────────────
+outdir: "s3://nf-kapsule-results/run-CHANGE_DATE"
+
+# ── Paramètres séquençage ─────────────────────────────────────────────────────
+# Illumina NovaSeq 6000 S4 — single-cell 4 / bulk RNA-seq
+# read_length : longueur de lecture pour l'index STAR (sjdbOverhang = read_length - 1)
+read_length: 150
+strandedness: "auto"     # Détection automatique via RSeQC
+
+# ── Aligneur ──────────────────────────────────────────────────────────────────
+aligner: "star_salmon"   # STAR pour l'alignement + Salmon pour la quantification
+pseudo_aligner: "salmon"
+
+# ── Limites ressources (alignées sur MEMORY3-X64C-512G) ──────────────────────
+max_cpus:   16
+max_memory: "48.GB"
+max_time:   "8.h"
+
+# ── Optimisations ─────────────────────────────────────────────────────────────
+save_align_intermeds: false   # Ne pas sauvegarder les BAM intermédiaires
+save_unaligned: false          # Ne pas garder les reads non alignés
+skip_markduplicates: false
+skip_qc: false
+
+# ── Contrôle qualité ──────────────────────────────────────────────────────────
+min_mapped_reads: 5
