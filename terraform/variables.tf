@@ -47,19 +47,19 @@ variable "orchestrator_node_type" {
 
 variable "compute_node_type" {
   type        = string
-  default     = "MEMORY3-X64C-512G"
+  default     = "MEMORY3-X8C-64G"
   description = <<-EOD
-    Nœud STAR-compute : 64 vCPU / 512 GB RAM.
-    Packing : 4 jobs STAR simultanés à 16 vCPU / 48 GB chacun.
-    Ratio mémoire 8 GB/vCPU de la série MEMORY3 → idéal pour STAR (OOM @40 GB).
-    Alternative moins dense : MEMORY3-X32C-256G (2 jobs/nœud).
+    Nœud STAR-compute : 8 vCPU / 64 GB RAM (disponible fr-par-1).
+    Packing POC : 1 job STAR par nœud à 8 vCPU / 52 GB.
+    STAR supporte 8 threads sans dégradation significative (scaling sub-linéaire au-delà de 8).
+    Pour la production, passer à MEMORY3-X32C-256G ou X48C-384G si disponibles (4-6 jobs/nœud).
   EOD
 }
 
 variable "compute_max_nodes" {
   type        = number
-  default     = 5
-  description = "Max nœuds compute : 5 × 4 = 20 slots STAR. Pic de 10 jobs → 3 nœuds suffisent."
+  default     = 10
+  description = "Max nœuds compute : 10 × 1 job = 10 slots STAR simultanés (pic cible du run)."
   validation {
     condition     = var.compute_max_nodes >= 1 && var.compute_max_nodes <= 20
     error_message = "compute_max_nodes doit être entre 1 et 20."

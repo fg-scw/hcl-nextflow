@@ -32,8 +32,8 @@ aligner: "star_salmon"   # STAR pour l'alignement + Salmon pour la quantificatio
 pseudo_aligner: "salmon"
 
 # ── Limites ressources (alignées sur MEMORY3-X64C-512G) ──────────────────────
-max_cpus:   16
-max_memory: "48.GB"
+max_cpus:   8
+max_memory: "52.GB"
 max_time:   "8.h"
 
 # ── Optimisations ─────────────────────────────────────────────────────────────
