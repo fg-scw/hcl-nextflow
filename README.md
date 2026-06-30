@@ -75,7 +75,8 @@ cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 # Remplir : scw_access_key, scw_secret_key, scw_project_id
 
 # 2. Déployer l'infrastructure (~15-20 min)
-#    make cluster s'exécute en 2 phases :
+#    make cluster s'exécute en 3 phases :
+#    - Phase 0 : VPC + Private Network (~1 min)
 #    - Phase 1 : cluster Scaleway + node pools + kubeconfig (~10-15 min)
 #    - Phase 2 : namespace, RBAC, PVCs SFS, ConfigMap, Secret (~2 min)
 make init
@@ -154,7 +155,12 @@ make clean             # terraform destroy (⚠ supprime cluster et données)
 
 ## Contraintes connues
 
-**Déploiement en deux phases** : le provider Terraform Kubernetes ne peut pas s'initialiser avant que le cluster Kapsule existe. `make cluster` exécute donc automatiquement deux `terraform apply` successifs — phase 1 crée le cluster et écrit le kubeconfig, phase 2 déploie les ressources Kubernetes. Ne pas interrompre entre les deux phases.
+**Déploiement en trois phases** : `make cluster` enchaîne automatiquement trois `terraform apply` successifs.
+- **Phase 0** : VPC + Private Network (créés et propagés dans l'API Scaleway avant la suite)
+- **Phase 1** : cluster Kapsule + node pools + kubeconfig (le K8s provider ne peut pas s'initialiser avant)
+- **Phase 2** : namespace, RBAC, PVCs SFS, ConfigMap, Secret Kubernetes
+
+Ne pas interrompre entre les phases. Si Phase 1 échoue avec `private_network_id not found`, relancer `make cluster` — Phase 0 sera un no-op et Phase 1 trouvera le PN déjà stable.
 
 **STAR OOM** : 40 GB minimum stricts par job (index GRCh38 chargé intégralement en RAM). En dessous, STAR échoue sans message d'erreur explicite. Le POC utilise 52 GB/job sur `POP2-HM-8C-64G` (1 job/nœud). Pour augmenter le packing en production : `POP2-HM-32C-256G` (4 jobs/nœud).
 
