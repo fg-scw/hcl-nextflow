@@ -2,7 +2,7 @@
 
 Pipeline bioinformatique **nf-core/rnaseq** (aligneur STAR) déployé sur **Scaleway Kapsule** (Kubernetes managé). Infrastructure complète provisionnée par Terraform : cluster, node pools, stockage NFS in-cluster, buckets S3, IAM.
 
-**Charge cible** : 300-400 échantillons/run · 10 jobs STAR simultanés · 160 vCPU + 450 GB RAM en pic · 2,2 To FASTQ → 1,5 To BAM
+**Charge cible** : 300-400 échantillons/run · 10 jobs STAR simultanés · 80 vCPU + 520 GB RAM en pic (POC) · 2,2 To FASTQ → 1,5 To BAM
 
 ---
 
@@ -18,10 +18,10 @@ Pipeline bioinformatique **nf-core/rnaseq** (aligneur STAR) déployé sur **Scal
 │  │  (pilote le pipeline)       (SBS RWO → NFS RWX)         │        │
 │  └──────────────────────────────────────────────────────────┘        │
 │                │ k8s executor                │ NFS mount             │
-│  Pool star-compute (MEMORY3-X64C-512G, min=0, autoscale 0→5)        │
+│  Pool star-compute (MEMORY3-X8C-64G, min=0, autoscale 0→10)         │
 │  ┌──────────────────────────────────────────────────────────┐        │
-│  │  STAR job ×4   STAR job ×4   STAR job ×4                │        │
-│  │  16vCPU/48GB   16vCPU/48GB   16vCPU/48GB                │        │
+│  │  STAR job ×1   STAR job ×1   STAR job ×1                │        │
+│  │  8vCPU/52GB    8vCPU/52GB    8vCPU/52GB                 │        │
 │  └──────────────────────────────────────────────────────────┘        │
 └──────────────────────────────────────────────────────────────────────┘
          │ S3 input/output                     │ NFS shared volumes
@@ -36,9 +36,9 @@ Pipeline bioinformatique **nf-core/rnaseq** (aligneur STAR) déployé sur **Scal
 | Pool | Instance | vCPU | RAM | Rôle | Autoscale |
 |---|---|---|---|---|---|
 | `orchestrator` | BASIC3-X4C-16G | 4 | 16 GB | Nextflow head + NFS server | min=1, toujours actif |
-| `star-compute` | MEMORY3-X64C-512G | 64 | 512 GB | Jobs STAR (4 par nœud) | min=0, scale-to-zero |
+| `star-compute` | MEMORY3-X8C-64G | 8 | 64 GB | 1 job STAR par nœud | min=0, scale-to-zero, max=10 |
 
-**Packing STAR** : 4 jobs × (16 vCPU + 48 GB) = 64 vCPU / 192 GB par nœud MEMORY3. Le ratio 8 GB/vCPU de la série MEMORY3 est le seul viable sur Scaleway pour tenir l'OOM STAR à 40 GB minimum par job.
+**Packing STAR (POC)** : 1 job × (8 vCPU + 52 GB) par nœud MEMORY3-X8C-64G — l'index GRCh38 (~32 GB) tient en RAM, les 12 GB restants couvrent le buffer OS et les I/O STAR. MEMORY3-X64C-512G (cible production, 4 jobs/nœud) n'est pas disponible dans la zone fr-par-1 au moment du déploiement. Pour la production, passer sur MEMORY3-X32C-256G ou X48C-384G si disponibles.
 
 ### Stockage
 
@@ -140,8 +140,8 @@ make clean             # terraform destroy (⚠ supprime cluster et données)
 ### `nextflow/nextflow.config` — profil `scaleway_kapsule`
 
 - Executor `k8s`, namespace `bioinformatics`, ServiceAccount `nextflow`
-- `STAR_ALIGN` : 16 vCPU / 48 GB, `nodeSelector` pool `star-compute`, tolération taint, volume reference en RO
-- `STAR_GENOMEGENERATE` : 16 vCPU / 120 GB (génération one-shot d'index), volume reference en RW
+- `STAR_ALIGN` : 8 vCPU / 52 GB, `nodeSelector` pool `star-compute`, tolération taint, volume reference en RO
+- `STAR_GENOMEGENERATE` : 8 vCPU / 56 GB (génération one-shot d'index), volume reference en RW
 - Endpoint S3 Scaleway configuré dans le bloc `aws.client`
 
 **Scratch SBS haute IOPS (production)** : décommenter le bloc `volumeClaim` dans `withName:STAR_ALIGN` et supprimer `scratch = true` pour utiliser des PVC SBS dynamiques (`star-scratch`, 2 To, 25 687 IOPS) au lieu du workdir NFS.
@@ -150,7 +150,7 @@ make clean             # terraform destroy (⚠ supprime cluster et données)
 
 ## Contraintes connues
 
-**STAR OOM** : 40 GB minimum stricts par job. En dessous, STAR échoue sans message clair. Les instances MEMORY3-X (8 GB/vCPU) sont le seul choix viable sur Scaleway pour tenir 4 jobs/nœud.
+**STAR OOM** : 40 GB minimum stricts par job (index GRCh38 chargé intégralement en RAM). En dessous, STAR échoue sans message d'erreur explicite. Le POC utilise 52 GB/job sur MEMORY3-X8C-64G (1 job/nœud). MEMORY3-X64C-512G (cible production, 4 jobs/nœud) n'est pas disponible en fr-par-1.
 
 **Pas de Spot sur Kapsule** : Scaleway ne propose pas d'instances préemptibles. Le Cluster Autoscaler scale le pool `star-compute` à 0 entre les runs. Nextflow `-resume` gère les interruptions.
 
