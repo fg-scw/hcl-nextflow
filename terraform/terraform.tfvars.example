@@ -9,8 +9,8 @@ scw_project_id = "PROJECT_ID_HERE"
 cluster_name    = "nf-kapsule"
 scaleway_region = "fr-par"
 scaleway_zone   = "fr-par-1"
-k8s_version     = "1.31"
-# Versions disponibles : scw k8s version list --region fr-par
+k8s_version     = "1.35.3"
+# Versions disponibles : scw k8s version list region=fr-par
 
 # ── Compute ───────────────────────────────────────────────────────────────────
 # Production cible : 64 vCPU / 512 GB — 4 jobs STAR par nœud à 16 vCPU/48 GB

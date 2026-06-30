@@ -30,8 +30,8 @@ variable "scaleway_zone" {
 }
 variable "k8s_version" {
   type        = string
-  default     = "1.31"
-  description = "Version Kubernetes Kapsule. Vérifier les versions disponibles : scw k8s version list --region fr-par"
+  default     = "1.35.3"
+  description = "Version Kubernetes Kapsule. Versions disponibles : scw k8s version list region=fr-par"
 }
 variable "vpc_cidr" {
   type    = string
