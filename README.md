@@ -78,6 +78,7 @@ cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 #    make cluster s'exécute en 3 phases :
 #    - Phase 0 : VPC + Private Network (~1 min)
 #    - Phase 1 : cluster Scaleway + node pools + kubeconfig (~10-15 min)
+#    - Attente stabilisation API K8s (60s)
 #    - Phase 2 : namespace, RBAC, PVCs SFS, ConfigMap, Secret (~2 min)
 make init
 make cluster
@@ -155,12 +156,15 @@ make clean             # terraform destroy (⚠ supprime cluster et données)
 
 ## Contraintes connues
 
-**Déploiement en trois phases** : `make cluster` enchaîne automatiquement trois `terraform apply` successifs.
+**Déploiement en trois phases** : `make cluster` enchaîne automatiquement trois `terraform apply` successifs, séparés par une attente de 60s.
 - **Phase 0** : VPC + Private Network (créés et propagés dans l'API Scaleway avant la suite)
 - **Phase 1** : cluster Kapsule + node pools + kubeconfig (le K8s provider ne peut pas s'initialiser avant)
+- **Attente 60s** : laisse le control plane K8s du nouveau cluster devenir joignable avant que le provider `kubernetes` ne s'y connecte
 - **Phase 2** : namespace, RBAC, PVCs SFS, ConfigMap, Secret Kubernetes
 
 Ne pas interrompre entre les phases. Si Phase 1 échoue avec `private_network_id not found`, relancer `make cluster` — Phase 0 sera un no-op et Phase 1 trouvera le PN déjà stable.
+
+Le provider `kubernetes` (`terraform/main.tf`) est configuré avec `config_path` pointant sur `~/.kube/config-nf-kapsule` (écrit par Phase 1), et non via des credentials dérivés en direct du data source `scaleway_k8s_cluster` — ce data source peut retourner un kubeconfig vide juste après la création du cluster, ce qui ferait retomber le provider sur `localhost:80` (`connection refused`) en Phase 2.
 
 **STAR OOM** : 40 GB minimum stricts par job (index GRCh38 chargé intégralement en RAM). En dessous, STAR échoue sans message d'erreur explicite. Le POC utilise 52 GB/job sur `POP2-HM-8C-64G` (1 job/nœud). Pour augmenter le packing en production : `POP2-HM-32C-256G` (4 jobs/nœud).
 

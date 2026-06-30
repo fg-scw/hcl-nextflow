@@ -24,6 +24,8 @@ cluster: ## Déployer le cluster Kapsule + node pools + SFS + S3 + IAM + K8s res
 		-target=scaleway_k8s_pool.orchestrator \
 		-target=scaleway_k8s_pool.star_compute \
 		-target=local_file.kubeconfig
+	@echo "=== Attente stabilisation API K8s (60s) ==="
+	@sleep 60
 	@echo "=== Phase 2 : ressources Kubernetes (namespace, RBAC, PVCs, ConfigMap) ==="
 	$(TF) apply -var-file=terraform.tfvars -auto-approve
 
