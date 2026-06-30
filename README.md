@@ -162,7 +162,7 @@ make clean             # terraform destroy (⚠ supprime cluster et données)
 - **Attente 60s** : laisse le control plane K8s du nouveau cluster devenir joignable avant que le provider `kubernetes` ne s'y connecte
 - **Phase 2** : namespace, RBAC, PVCs SFS, ConfigMap, Secret Kubernetes
 
-Ne pas interrompre entre les phases. Si Phase 1 échoue avec `private_network_id not found`, relancer `make cluster` — Phase 0 sera un no-op et Phase 1 trouvera le PN déjà stable.
+Ne pas interrompre entre les phases. Le cluster conserve `delete_additional_resources = false` afin qu'un remplacement Kapsule ne supprime pas le Private Network géré par Terraform. Si un ancien déploiement a laissé un ID de PN orphelin dans le state, relancer `make cluster` : le refresh de la Phase 0 détectera sa disparition et le recréera avant la Phase 1.
 
 Le provider `kubernetes` (`terraform/main.tf`) est configuré avec `config_path` pointant sur `~/.kube/config-nf-kapsule` (écrit par Phase 1), et non via des credentials dérivés en direct du data source `scaleway_k8s_cluster` — ce data source peut retourner un kubeconfig vide juste après la création du cluster, ce qui ferait retomber le provider sur `localhost:80` (`connection refused`) en Phase 2.
 

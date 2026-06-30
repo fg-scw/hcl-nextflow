@@ -28,8 +28,10 @@ resource "scaleway_k8s_cluster" "main" {
   project_id         = var.scw_project_id
   private_network_id = scaleway_vpc_private_network.main.id
 
-  # Nettoie les LBs, IPs et volumes créés par le cluster lors du destroy.
-  delete_additional_resources = true
+  # Le VPC et le Private Network sont gérés par Terraform. Si cette option est
+  # activée, Kapsule supprime aussi le PN lors d'un remplacement du cluster,
+  # laissant son ID orphelin dans le state avant la recréation du cluster.
+  delete_additional_resources = false
 
   # scw-filestorage-csi active le driver CSI File Storage (SFS) préinstallé
   # sur Kapsule — requis pour les PVCs ReadWriteMany via sfs-standard.
