@@ -20,6 +20,11 @@ resource "scaleway_k8s_pool" "orchestrator" {
     max_unavailable = 0
     max_surge       = 1
   }
+
+  # Le Cluster Autoscaler gère le size — Terraform ne doit pas écraser ses décisions.
+  lifecycle {
+    ignore_changes = [size]
+  }
 }
 
 # ── Pool compute — jobs STAR (scale-to-zero entre les runs) ───────────────────
@@ -57,5 +62,12 @@ resource "scaleway_k8s_pool" "star_compute" {
   upgrade_policy {
     max_unavailable = 1
     max_surge       = 0
+  }
+
+  # Le Cluster Autoscaler peut scaler ce pool à 0 entre les runs.
+  # Sans ignore_changes, Terraform lirait size=0 depuis l'API et tenterait
+  # de le remettre à 1, déclenchant une erreur Kapsule "can't have less than 1 nodes".
+  lifecycle {
+    ignore_changes = [size]
   }
 }
