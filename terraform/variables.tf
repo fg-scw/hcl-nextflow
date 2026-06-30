@@ -29,8 +29,9 @@ variable "scaleway_zone" {
   default = "fr-par-1"
 }
 variable "k8s_version" {
-  type    = string
-  default = "1.32.0"
+  type        = string
+  default     = "1.31"
+  description = "Version Kubernetes Kapsule. Vérifier les versions disponibles : scw k8s version list --region fr-par"
 }
 variable "vpc_cidr" {
   type    = string

@@ -7,14 +7,14 @@ output "kubeconfig_path" {
   value = local_file.kubeconfig.filename
 }
 
-output "nfs_server_ip" {
-  value       = data.scaleway_ipam_ip.nfs_server.address
-  description = "IP privée du serveur NFS sur le Private Network (accessible depuis les nœuds Kapsule)"
+output "nfs_server_service_clusterip" {
+  value       = kubernetes_service.nfs_server.spec[0].cluster_ip
+  description = "ClusterIP du service NFS in-cluster — utilisé par les PVs workdir et reference"
 }
 
-output "nfs_server_instance_id" {
-  value       = scaleway_instance_server.nfs_server.id
-  description = "ID instance du serveur NFS — pour diagnostic SSH ou console Scaleway"
+output "nfs_backing_pvc" {
+  value       = kubernetes_persistent_volume_claim.nfs_backing.metadata[0].name
+  description = "PVC SBS de backing du serveur NFS (scw-bssd, RWO, voir variables workdir_size_gb + reference_size_gb)"
 }
 
 output "input_bucket_name" {
@@ -55,17 +55,21 @@ output "quickstart" {
     export KUBECONFIG=~/.kube/config-nf-kapsule
     kubectl get nodes
 
-    # 2. Uploader l'index STAR dans le volume référence (one-shot)
+    # 2. Vérifier le serveur NFS in-cluster
+    kubectl get pods -n bioinformatics -l app=nfs-server
+    kubectl get pvc -n bioinformatics
+
+    # 3. Uploader l'index STAR dans le volume référence (one-shot)
     make upload-reference
 
-    # 3. Uploader les FASTQ dans le bucket input
+    # 4. Uploader les FASTQ dans le bucket input
     aws --endpoint-url https://s3.fr-par.scw.cloud s3 sync \
       /local/fastq/ s3://${scaleway_object_bucket.data["input"].name}/
 
-    # 4. Lancer le pipeline
+    # 5. Lancer le pipeline
     make run-pipeline
 
-    # 5. Surveiller les nœuds compute (autoscaling)
+    # 6. Surveiller les nœuds compute (autoscaling)
     make watch-nodes
 
   EOT
