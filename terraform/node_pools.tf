@@ -14,7 +14,7 @@ resource "scaleway_k8s_pool" "orchestrator" {
   autohealing = true
   region      = var.scaleway_region
   zone        = var.scaleway_zone
-  tags        = concat(var.tags, ["pool=orchestrator"])
+  tags        = concat(var.tags, ["role=orchestrator"])
 
   upgrade_policy {
     max_unavailable = 0
@@ -37,14 +37,14 @@ resource "scaleway_k8s_pool" "star_compute" {
   cluster_id  = scaleway_k8s_cluster.main.id
   name        = "star-compute"
   node_type   = var.compute_node_type
-  size        = 0
+  size        = 1
   min_size    = 0
   max_size    = var.compute_max_nodes
   autoscaling = true
   autohealing = true
   region      = var.scaleway_region
   zone        = var.scaleway_zone
-  tags        = concat(var.tags, ["pool=star-compute"])
+  tags        = concat(var.tags, ["role=star-compute"])
 
   # Taint : seuls les pods avec la tolération explicite s'exécutent ici.
   # Nextflow injecte automatiquement la tolération via le pod spec dans nextflow.config.
