@@ -61,11 +61,11 @@ resource "kubernetes_cluster_role_binding" "nextflow" {
   }
 }
 
-# ── PersistentVolumes SFS (provisionning statique NFS) ────────────────────────
+# ── PersistentVolumes NFS (serveur NFS sur instance Scaleway) ─────────────────
 #
-# scaleway_file_system.*.endpoint retourne l'IP privée du serveur NFS SFS.
-# Les nœuds Kapsule (zone fr-par-1) atteignent l'endpoint via le réseau
-# interne Scaleway sans configuration réseau additionnelle.
+# Le serveur NFS est une instance BASIC3-X2C-4G avec un volume b_ssd (VirtioFS).
+# data.scaleway_ipam_ip.nfs_server.address donne l'IP sur le Private Network.
+# Les nœuds Kapsule dans le même PN atteignent cette IP directement.
 
 resource "kubernetes_persistent_volume" "workdir" {
   metadata {
@@ -83,13 +83,13 @@ resource "kubernetes_persistent_volume" "workdir" {
     storage_class_name               = ""
     persistent_volume_source {
       nfs {
-        server    = scaleway_file_system.workdir.endpoint
-        path      = "/"
+        server    = data.scaleway_ipam_ip.nfs_server.address
+        path      = "/data/workdir"
         read_only = false
       }
     }
   }
-  depends_on = [scaleway_file_system.workdir]
+  depends_on = [scaleway_instance_server.nfs_server, scaleway_instance_private_nic.nfs_server]
 }
 
 resource "kubernetes_persistent_volume_claim" "workdir" {
@@ -125,13 +125,13 @@ resource "kubernetes_persistent_volume" "reference" {
     storage_class_name               = ""
     persistent_volume_source {
       nfs {
-        server    = scaleway_file_system.reference.endpoint
-        path      = "/"
+        server    = data.scaleway_ipam_ip.nfs_server.address
+        path      = "/data/reference"
         read_only = false
       }
     }
   }
-  depends_on = [scaleway_file_system.reference]
+  depends_on = [scaleway_instance_server.nfs_server, scaleway_instance_private_nic.nfs_server]
 }
 
 resource "kubernetes_persistent_volume_claim" "reference" {
@@ -206,5 +206,6 @@ resource "kubernetes_config_map" "nextflow_config" {
     kubernetes_persistent_volume_claim.workdir,
     kubernetes_persistent_volume_claim.reference,
     kubernetes_storage_class.star_scratch,
+    data.scaleway_ipam_ip.nfs_server,
   ]
 }

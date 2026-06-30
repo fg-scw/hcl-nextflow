@@ -7,14 +7,14 @@ output "kubeconfig_path" {
   value = local_file.kubeconfig.filename
 }
 
-output "sfs_workdir_endpoint" {
-  value       = scaleway_file_system.workdir.endpoint
-  description = "IP NFS du volume SFS workdir (Nextflow work directory)"
+output "nfs_server_ip" {
+  value       = data.scaleway_ipam_ip.nfs_server.address
+  description = "IP privée du serveur NFS sur le Private Network (accessible depuis les nœuds Kapsule)"
 }
 
-output "sfs_reference_endpoint" {
-  value       = scaleway_file_system.reference.endpoint
-  description = "IP NFS du volume SFS reference (index STAR, annotations)"
+output "nfs_server_instance_id" {
+  value       = scaleway_instance_server.nfs_server.id
+  description = "ID instance du serveur NFS — pour diagnostic SSH ou console Scaleway"
 }
 
 output "input_bucket_name" {
@@ -39,7 +39,7 @@ output "pipeline_iam_app_id" {
 
 output "compute_pool_status" {
   value       = scaleway_k8s_pool.star_compute.status
-  description = "État du pool star-compute (autoscale 0→${var.compute_max_nodes})"
+  description = "État du pool star-compute (autoscale 0→N, voir variable compute_max_nodes)"
 }
 
 output "quickstart" {
