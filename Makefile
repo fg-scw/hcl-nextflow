@@ -15,6 +15,10 @@ init: ## Initialiser Terraform (providers)
 	$(TF) init -upgrade
 
 cluster: ## Déployer le cluster Kapsule + node pools + SFS + S3 + IAM + K8s resources
+	@echo "=== Phase 0 : VPC + Private Network ==="
+	$(TF) apply -var-file=terraform.tfvars -auto-approve \
+		-target=scaleway_vpc.main \
+		-target=scaleway_vpc_private_network.main
 	@echo "=== Phase 1 : cluster Scaleway + kubeconfig ==="
 	$(TF) apply -var-file=terraform.tfvars -auto-approve \
 		-target=scaleway_k8s_pool.orchestrator \
