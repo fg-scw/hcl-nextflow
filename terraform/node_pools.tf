@@ -42,7 +42,7 @@ resource "scaleway_k8s_pool" "star_compute" {
   cluster_id  = scaleway_k8s_cluster.main.id
   name        = "star-compute"
   node_type   = var.compute_node_type
-  size        = 1
+  size        = 0
   min_size    = 0
   max_size    = var.compute_max_nodes
   autoscaling = true
