@@ -50,7 +50,7 @@ variable "compute_node_type" {
   default     = "POP2-HM-8C-64G"
   description = <<-EOD
     Nœud STAR-compute : 8 vCPU / 64 GB RAM, série POP2 High Memory (requis pour SFS CSI).
-    Packing POC : 1 job STAR par nœud à 8 vCPU / 52 GB.
+    Packing POC : 1 job STAR à 7 CPU / 52 GB par nœud, avec un cœur réservé à Kubernetes.
     Alternative production (meilleur packing) : POP2-HM-16C-128G (2 jobs/nœud) ou POP2-HM-32C-256G (4 jobs/nœud).
     BASIC3/MEMORY3 documentés pour une future implémentation sans SFS.
   EOD

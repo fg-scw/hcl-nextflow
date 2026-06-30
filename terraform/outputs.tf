@@ -4,7 +4,7 @@ output "cluster_id" {
 }
 
 output "kubeconfig_path" {
-  value = local_file.kubeconfig.filename
+  value = pathexpand("~/.kube/config-nf-kapsule")
 }
 
 output "workdir_pvc" {
@@ -51,8 +51,8 @@ output "quickstart" {
 
     # 1. Configurer kubectl
     CLUSTER_ID=$(terraform -chdir=terraform output -raw cluster_id)
-    scw k8s kubeconfig install $CLUSTER_ID --filepath ~/.kube/config-nf-kapsule
     export KUBECONFIG=~/.kube/config-nf-kapsule
+    scw k8s kubeconfig install $CLUSTER_ID
     kubectl get nodes
 
     # 2. Vérifier le driver SFS CSI et les PVCs

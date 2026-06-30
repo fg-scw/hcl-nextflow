@@ -39,7 +39,7 @@ Pipeline bioinformatique **nf-core/rnaseq** (aligneur STAR) déployé sur **Scal
 | `orchestrator` | POP2-4C-16G | 4 | 16 GB | Nextflow head job | min=1, toujours actif |
 | `star-compute` | POP2-HM-8C-64G | 8 | 64 GB | 1 job STAR par nœud | min=0, scale-to-zero, max=10 |
 
-**Famille POP2 requise** pour le driver CSI File Storage (`filestorage.csi.scaleway.com`). La série POP2-HM (High Memory) offre le même ratio mémoire que les MEMORY3 (8 GB/vCPU). Packing POC : 1 job × (8 vCPU + 52 GB) par nœud — l'index GRCh38 (~32 GB) tient en RAM, 12 GB de marge pour l'OS et les I/O STAR. Pour augmenter le packing en production : `POP2-HM-16C-128G` (2 jobs/nœud) ou `POP2-HM-32C-256G` (4 jobs/nœud).
+**Famille POP2 requise** pour le driver CSI File Storage (`filestorage.csi.scaleway.com`). La série POP2-HM (High Memory) offre le même ratio mémoire que les MEMORY3 (8 GB/vCPU). Packing POC : 1 job × (7 CPU demandés + 52 GB) par nœud de 8 vCPU — un cœur reste disponible pour la réserve Kubernetes. L'index GRCh38 (~32 GB) tient en RAM avec une marge pour l'OS et les I/O STAR. Pour augmenter le packing en production : `POP2-HM-16C-128G` (2 jobs/nœud) ou `POP2-HM-32C-256G` (4 jobs/nœud).
 
 ### Stockage
 
@@ -146,8 +146,8 @@ make clean             # terraform destroy (⚠ supprime cluster et données)
 ### `nextflow/nextflow.config` — profil `scaleway_kapsule`
 
 - Executor `k8s`, namespace `bioinformatics`, ServiceAccount `nextflow`
-- `STAR_ALIGN` : 8 vCPU / 52 GB, `nodeSelector` pool `star-compute`, tolération taint, volume reference en RO
-- `STAR_GENOMEGENERATE` : 8 vCPU / 56 GB (génération one-shot d'index), volume reference en RW
+- `STAR_ALIGN` : 7 CPU / 52 GB sur un nœud 8 vCPU, `nodeSelector` pool `star-compute`, tolération taint, volume reference en RO
+- `STAR_GENOMEGENERATE` : 7 CPU / 56 GB (génération one-shot d'index), volume reference en RW
 - Endpoint S3 Scaleway configuré dans le bloc `aws.client`
 
 **Scratch SBS haute IOPS (production)** : décommenter le bloc `volumeClaim` dans `withName:STAR_ALIGN` et supprimer `scratch = true` pour utiliser des PVC SBS dynamiques (`star-scratch`, 2 To, 25 687 IOPS) au lieu du workdir SFS.
@@ -158,13 +158,13 @@ make clean             # terraform destroy (⚠ supprime cluster et données)
 
 **Déploiement en trois phases** : `make cluster` enchaîne automatiquement trois `terraform apply` successifs, séparés par une attente de 60s.
 - **Phase 0** : VPC + Private Network (créés et propagés dans l'API Scaleway avant la suite)
-- **Phase 1** : cluster Kapsule + node pools + kubeconfig (le K8s provider ne peut pas s'initialiser avant)
+- **Phase 1** : cluster Kapsule + node pools, puis installation du kubeconfig hors du graphe Terraform
 - **Attente 60s** : laisse le control plane K8s du nouveau cluster devenir joignable avant que le provider `kubernetes` ne s'y connecte
 - **Phase 2** : namespace, RBAC, PVCs SFS, ConfigMap, Secret Kubernetes
 
 Ne pas interrompre entre les phases. Le cluster conserve `delete_additional_resources = false` afin qu'un remplacement Kapsule ne supprime pas le Private Network géré par Terraform. Si un ancien déploiement a laissé un ID de PN orphelin dans le state, relancer `make cluster` : le refresh de la Phase 0 détectera sa disparition et le recréera avant la Phase 1.
 
-Le provider `kubernetes` (`terraform/main.tf`) est configuré avec `config_path` pointant sur `~/.kube/config-nf-kapsule` (écrit par Phase 1), et non via des credentials dérivés en direct du data source `scaleway_k8s_cluster` — ce data source peut retourner un kubeconfig vide juste après la création du cluster, ce qui ferait retomber le provider sur `localhost:80` (`connection refused`) en Phase 2.
+Le provider `kubernetes` (`terraform/main.tf`) lit `~/.kube/config-nf-kapsule`, installé par la CLI Scaleway entre les phases 1 et 2. Le fichier n'est pas une ressource Terraform : Terraform ne peut donc pas le supprimer temporairement pendant un remplacement et faire retomber le provider sur `localhost:80` (`connection refused`).
 
 **STAR OOM** : 40 GB minimum stricts par job (index GRCh38 chargé intégralement en RAM). En dessous, STAR échoue sans message d'erreur explicite. Le POC utilise 52 GB/job sur `POP2-HM-8C-64G` (1 job/nœud). Pour augmenter le packing en production : `POP2-HM-32C-256G` (4 jobs/nœud).
 

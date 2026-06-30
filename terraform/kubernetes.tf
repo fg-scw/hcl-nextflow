@@ -82,7 +82,8 @@ resource "kubernetes_persistent_volume_claim" "workdir" {
     storage_class_name = "sfs-standard"
     resources {
       requests = {
-        storage = "${var.workdir_size_gb}Gi"
+        # Le driver SFS exige un multiple de 1 GB décimal ; utiliser G, pas Gi.
+        storage = "${var.workdir_size_gb}G"
       }
     }
   }
@@ -99,7 +100,8 @@ resource "kubernetes_persistent_volume_claim" "reference" {
     storage_class_name = "sfs-standard"
     resources {
       requests = {
-        storage = "${var.reference_size_gb}Gi"
+        # Le driver SFS exige un multiple de 1 GB décimal ; utiliser G, pas Gi.
+        storage = "${var.reference_size_gb}G"
       }
     }
   }

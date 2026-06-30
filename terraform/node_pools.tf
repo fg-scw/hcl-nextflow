@@ -17,7 +17,7 @@ resource "scaleway_k8s_pool" "orchestrator" {
   tags        = concat(var.tags, ["role=orchestrator"])
 
   upgrade_policy {
-    max_unavailable = 0
+    max_unavailable = 1
     max_surge       = 1
   }
 

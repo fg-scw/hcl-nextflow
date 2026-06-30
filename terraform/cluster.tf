@@ -21,12 +21,15 @@ resource "scaleway_vpc_private_network" "main" {
 
 # ── Kapsule Cluster (Cilium CNI) ──────────────────────────────────────────────
 resource "scaleway_k8s_cluster" "main" {
-  name               = "${var.cluster_name}-kapsule"
-  version            = var.k8s_version
-  cni                = "cilium"
-  region             = var.scaleway_region
-  project_id         = var.scw_project_id
-  private_network_id = scaleway_vpc_private_network.main.id
+  name       = "${var.cluster_name}-kapsule"
+  version    = var.k8s_version
+  cni        = "cilium"
+  region     = var.scaleway_region
+  project_id = var.scw_project_id
+
+  # L'API Kapsule stocke l'UUID nu, contrairement à l'ID régional du resource VPC.
+  # Passer l'ID régional provoquerait un faux diff et remplacerait le cluster.
+  private_network_id = split("/", scaleway_vpc_private_network.main.id)[1]
 
   # Le VPC et le Private Network sont gérés par Terraform. Si cette option est
   # activée, Kapsule supprime aussi le PN lors d'un remplacement du cluster,
@@ -55,5 +58,7 @@ resource "scaleway_k8s_cluster" "main" {
     ignore_daemonsets_utilization   = true
     balance_similar_node_groups     = false
     expendable_pods_priority_cutoff = -10
+    log_level                       = 2
+    skip_nodes_with_local_storage   = false
   }
 }

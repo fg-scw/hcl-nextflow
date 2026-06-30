@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Télécharge et génère l'index STAR GRCh38 dans le PVC nf-reference-pvc.
 # À exécuter une seule fois après 'make cluster'.
-# Durée : ~4-6h (génération index STAR sur 16 cœurs).
+# Durée : ~4-6h (génération index STAR sur le pool compute).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -10,7 +10,9 @@ GENOME_VERSION="${GENOME_VERSION:-GRCh38}"
 ENSEMBL_RELEASE="${ENSEMBL_RELEASE:-110}"
 READ_LENGTH="${READ_LENGTH:-150}"
 SJDB_OVERHANG=$((READ_LENGTH - 1))
-THREADS=16
+# Le nœud POP2-HM-8C-64G expose moins de 8 CPU allocatables après la réserve
+# Kubernetes. Garder un cœur de marge permet au pod de déclencher l'autoscaler.
+THREADS=7
 
 export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config-nf-kapsule}"
 
@@ -69,6 +71,21 @@ spec:
       persistentVolumeClaim:
         claimName: nf-reference-pvc
   initContainers:
+    # Le volume SFS est créé avec une racine appartenant à root. Préparer les
+    # répertoires partagés avant de lancer les images applicatives non-root.
+    - name: init-permissions
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          set -eu
+          mkdir -p /data/reference/fasta /data/reference/gtf /data/reference/star_index
+          chmod 0777 /data/reference/fasta /data/reference/gtf /data/reference/star_index
+      volumeMounts:
+        - name: reference
+          mountPath: /data/reference
+
     # Téléchargement du génome et des annotations Ensembl
     - name: download-genome
       image: curlimages/curl:8.5.0
@@ -123,10 +140,10 @@ spec:
       resources:
         requests:
           cpu: "${THREADS}"
-          memory: "120Gi"
+          memory: "52Gi"
         limits:
           cpu: "${THREADS}"
-          memory: "128Gi"
+          memory: "56Gi"
 EOF
 
 echo ""

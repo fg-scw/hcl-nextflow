@@ -19,11 +19,13 @@ cluster: ## Déployer le cluster Kapsule + node pools + SFS + S3 + IAM + K8s res
 	$(TF) apply -var-file=terraform.tfvars -auto-approve \
 		-target=scaleway_vpc.main \
 		-target=scaleway_vpc_private_network.main
-	@echo "=== Phase 1 : cluster Scaleway + kubeconfig ==="
+	@echo "=== Phase 1 : cluster Scaleway + node pools ==="
 	$(TF) apply -var-file=terraform.tfvars -auto-approve \
 		-target=scaleway_k8s_pool.orchestrator \
-		-target=scaleway_k8s_pool.star_compute \
-		-target=local_file.kubeconfig
+		-target=scaleway_k8s_pool.star_compute
+	@echo "=== Installation du kubeconfig hors du graphe Terraform ==="
+	@CLUSTER_ID=$$($(TF) output -raw cluster_id) && \
+	scw k8s kubeconfig install $$CLUSTER_ID
 	@echo "=== Attente stabilisation API K8s (60s) ==="
 	@sleep 60
 	@echo "=== Phase 2 : ressources Kubernetes (namespace, RBAC, PVCs, ConfigMap) ==="
@@ -31,7 +33,7 @@ cluster: ## Déployer le cluster Kapsule + node pools + SFS + S3 + IAM + K8s res
 
 kubeconfig: ## Configurer kubectl avec le kubeconfig du cluster
 	@CLUSTER_ID=$$($(TF) output -raw cluster_id) && \
-	scw k8s kubeconfig install $$CLUSTER_ID --filepath $(KUBECONFIG)
+	scw k8s kubeconfig install $$CLUSTER_ID
 	@echo "KUBECONFIG=$(KUBECONFIG)"
 	kubectl get nodes -o wide
 
