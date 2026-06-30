@@ -31,7 +31,9 @@ resource "scaleway_k8s_cluster" "main" {
   # Nettoie les LBs, IPs et volumes créés par le cluster lors du destroy.
   delete_additional_resources = true
 
-  tags = var.tags
+  # scw-filestorage-csi active le driver CSI File Storage (SFS) préinstallé
+  # sur Kapsule — requis pour les PVCs ReadWriteMany via sfs-standard.
+  tags = concat(var.tags, ["scw-filestorage-csi"])
 
   auto_upgrade {
     enable                        = false

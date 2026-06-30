@@ -41,18 +41,18 @@ variable "vpc_cidr" {
 # ── Node pools ────────────────────────────────────────────────────────────────
 variable "orchestrator_node_type" {
   type        = string
-  default     = "BASIC3-X4C-16G"
-  description = "Nextflow head job : 4 vCPU / 16 GB, toujours actif (min=1)."
+  default     = "POP2-4C-16G"
+  description = "Nextflow head job : 4 vCPU / 16 GB POP2, toujours actif (min=1). POP2 requis pour le CSI File Storage (SFS)."
 }
 
 variable "compute_node_type" {
   type        = string
-  default     = "MEMORY3-X8C-64G"
+  default     = "POP2-HM-8C-64G"
   description = <<-EOD
-    Nœud STAR-compute : 8 vCPU / 64 GB RAM (disponible fr-par-1).
+    Nœud STAR-compute : 8 vCPU / 64 GB RAM, série POP2 High Memory (requis pour SFS CSI).
     Packing POC : 1 job STAR par nœud à 8 vCPU / 52 GB.
-    STAR supporte 8 threads sans dégradation significative (scaling sub-linéaire au-delà de 8).
-    Pour la production, passer à MEMORY3-X32C-256G ou X48C-384G si disponibles (4-6 jobs/nœud).
+    Alternative production (meilleur packing) : POP2-HM-16C-128G (2 jobs/nœud) ou POP2-HM-32C-256G (4 jobs/nœud).
+    BASIC3/MEMORY3 documentés pour une future implémentation sans SFS.
   EOD
 }
 

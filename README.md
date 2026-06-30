@@ -12,47 +12,48 @@ Pipeline bioinformatique **nf-core/rnaseq** (aligneur STAR) déployé sur **Scal
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Scaleway Kapsule — namespace bioinformatics                         │
 │                                                                      │
-│  Pool orchestrator (BASIC3-X4C-16G, min=1, toujours actif)          │
+│  Pool orchestrator (POP2-4C-16G, min=1, toujours actif)             │
 │  ┌──────────────────────────────────────────────────────────┐        │
-│  │  Nextflow head job          NFS Server pod               │        │
-│  │  (pilote le pipeline)       (SBS RWO → NFS RWX)         │        │
+│  │  Nextflow head job                                       │        │
+│  │  (pilote le pipeline via executor k8s)                   │        │
 │  └──────────────────────────────────────────────────────────┘        │
-│                │ k8s executor                │ NFS mount             │
-│  Pool star-compute (MEMORY3-X8C-64G, min=0, autoscale 0→10)         │
+│                │ k8s executor                                        │
+│  Pool star-compute (POP2-HM-8C-64G, min=0, autoscale 0→10)          │
 │  ┌──────────────────────────────────────────────────────────┐        │
 │  │  STAR job ×1   STAR job ×1   STAR job ×1                │        │
 │  │  8vCPU/52GB    8vCPU/52GB    8vCPU/52GB                 │        │
 │  └──────────────────────────────────────────────────────────┘        │
 └──────────────────────────────────────────────────────────────────────┘
-         │ S3 input/output                     │ NFS shared volumes
-  ┌──────┴───────┐                    ┌────────┴────────┐
-  │  S3 FASTQ    │                    │  NFS workdir    │
-  │  S3 results  │                    │  NFS reference  │
-  └──────────────┘                    └─────────────────┘
+         │ S3 input/output              │ SFS RWX (filestorage CSI)
+  ┌──────┴───────┐            ┌─────────┴──────────┐
+  │  S3 FASTQ    │            │  sfs-standard PVC  │
+  │  S3 results  │            │  nf-workdir-pvc    │
+  └──────────────┘            │  nf-reference-pvc  │
+                              └────────────────────┘
 ```
 
 ### Node pools
 
 | Pool | Instance | vCPU | RAM | Rôle | Autoscale |
 |---|---|---|---|---|---|
-| `orchestrator` | BASIC3-X4C-16G | 4 | 16 GB | Nextflow head + NFS server | min=1, toujours actif |
-| `star-compute` | MEMORY3-X8C-64G | 8 | 64 GB | 1 job STAR par nœud | min=0, scale-to-zero, max=10 |
+| `orchestrator` | POP2-4C-16G | 4 | 16 GB | Nextflow head job | min=1, toujours actif |
+| `star-compute` | POP2-HM-8C-64G | 8 | 64 GB | 1 job STAR par nœud | min=0, scale-to-zero, max=10 |
 
-**Packing STAR (POC)** : 1 job × (8 vCPU + 52 GB) par nœud MEMORY3-X8C-64G — l'index GRCh38 (~32 GB) tient en RAM, les 12 GB restants couvrent le buffer OS et les I/O STAR. MEMORY3-X64C-512G (cible production, 4 jobs/nœud) n'est pas disponible dans la zone fr-par-1 au moment du déploiement. Pour la production, passer sur MEMORY3-X32C-256G ou X48C-384G si disponibles.
+**Famille POP2 requise** pour le driver CSI File Storage (`filestorage.csi.scaleway.com`). La série POP2-HM (High Memory) offre le même ratio mémoire que les MEMORY3 (8 GB/vCPU). Packing POC : 1 job × (8 vCPU + 52 GB) par nœud — l'index GRCh38 (~32 GB) tient en RAM, 12 GB de marge pour l'OS et les I/O STAR. Pour augmenter le packing en production : `POP2-HM-16C-128G` (2 jobs/nœud) ou `POP2-HM-32C-256G` (4 jobs/nœud).
 
 ### Stockage
 
 | Volume | Type | Capacité | Mode | Usage |
 |---|---|---|---|---|
-| `nf-workdir-pvc` | SBS → NFS RWX | 2 To | ReadWriteMany | Nextflow workdir + SAM/BAM temporaires |
-| `nf-reference-pvc` | SBS → NFS RWX | 500 Go | ReadWriteMany | Index STAR GRCh38 (~32 Go) + GTF |
+| `nf-workdir-pvc` | SFS (`sfs-standard`) | 2 To | ReadWriteMany | Nextflow workdir + SAM/BAM temporaires |
+| `nf-reference-pvc` | SFS (`sfs-standard`) | 500 Go | ReadWriteMany | Index STAR GRCh38 (~32 Go) + GTF |
 | `nf-kapsule-input` | S3 | illimité | — | FASTQ bruts (2,2 To par run NovaSeq S4) |
 | `nf-kapsule-results` | S3 | illimité | — | BAM triés + count tables |
 | `star-scratch` (optionnel) | SBS RWO dynamique | 2 To/job | ReadWriteOnce | Scratch haute IOPS en production |
 
-Le stockage partagé est implémenté via un **NFS server in-cluster** (`erichough/nfs-server`) monté sur un PVC SBS (`scw-bssd`). C'est le contournement au fait que `scaleway_file_system` (SFS managé) n'est pas disponible dans le provider Terraform Scaleway 2.x.
+Le stockage partagé utilise le **CSI driver SFS natif Kapsule** (`filestorage.csi.scaleway.com`), activé par le tag `scw-filestorage-csi` au niveau du cluster. Les PVCs sont provisionnées dynamiquement en `ReadWriteMany` — tous les pods task Nextflow montent le même volume simultanément sans infrastructure NFS intermédiaire.
 
-**Performance SBS VirtioFS** : 2 To → 25 687 IOPS / 201,5 MB/s (limite produit Scaleway).
+**Performance SFS** : débit et IOPS scalent linéairement avec la taille provisionnée.
 
 ---
 
@@ -81,8 +82,8 @@ make cluster
 make kubeconfig
 kubectl get nodes
 
-# 4. Vérifier le NFS server
-kubectl get pods -n bioinformatics -l app=nfs-server
+# 4. Vérifier le driver SFS CSI et les PVCs
+kubectl get daemonset -n kube-system filestorage-csi-node
 kubectl get pvc -n bioinformatics
 
 # 5. Générer l'index STAR GRCh38 (one-shot, ~4-6h)
@@ -150,13 +151,11 @@ make clean             # terraform destroy (⚠ supprime cluster et données)
 
 ## Contraintes connues
 
-**STAR OOM** : 40 GB minimum stricts par job (index GRCh38 chargé intégralement en RAM). En dessous, STAR échoue sans message d'erreur explicite. Le POC utilise 52 GB/job sur MEMORY3-X8C-64G (1 job/nœud). MEMORY3-X64C-512G (cible production, 4 jobs/nœud) n'est pas disponible en fr-par-1.
+**STAR OOM** : 40 GB minimum stricts par job (index GRCh38 chargé intégralement en RAM). En dessous, STAR échoue sans message d'erreur explicite. Le POC utilise 52 GB/job sur `POP2-HM-8C-64G` (1 job/nœud). Pour augmenter le packing en production : `POP2-HM-32C-256G` (4 jobs/nœud).
 
 **Pas de Spot sur Kapsule** : Scaleway ne propose pas d'instances préemptibles. Le Cluster Autoscaler scale le pool `star-compute` à 0 entre les runs. Nextflow `-resume` gère les interruptions.
 
-**NFS ClusterIP depuis kubelet** : Cilium sur Kapsule utilise des hooks eBPF cgroup-level qui interceptent les connexions ClusterIP depuis le namespace hôte. Les mounts NFS via ClusterIP depuis le kubelet sont supportés sans configuration supplémentaire.
-
-**SBS StorageClass** : le provisioner CSI dans Kapsule est `bs.csi.scaleway.com`. La classe `scw-bssd` est provisionnée automatiquement par Kapsule et utilisée par le NFS server backing.
+**SFS CSI driver** : activé par le tag `scw-filestorage-csi` au niveau du cluster. Vérifier avec `kubectl get daemonset -n kube-system filestorage-csi-node` que le DaemonSet tourne bien sur les nœuds après déploiement. Requiert la famille POP2 — BASIC3/MEMORY3 non compatibles.
 
 **Index STAR pré-généré** : après `make upload-reference`, pointer `star_index: "/data/reference/star_index/GRCh38_150bp"` dans `params.yaml` pour éviter de regénérer l'index (~4-6h) à chaque run.
 
@@ -170,10 +169,10 @@ terraform/
   cluster.tf        # VPC + Private Network + Kapsule (Cilium, k8s 1.35.3)
   node_pools.tf     # Pool orchestrator + pool star-compute (taint, autoscale)
   storage.tf        # Buckets S3 input/results
-  kubernetes.tf     # NFS server, PVs/PVCs, RBAC, StorageClass, Secret, ConfigMap
+  kubernetes.tf     # PVCs SFS (sfs-standard, RWX), RBAC, StorageClass, Secret, ConfigMap
   iam.tf            # Application IAM nextflow + API key + policy S3
   variables.tf      # Instance types, tailles stockage, max nœuds
-  outputs.tf        # Buckets, ClusterIP NFS, quickstart
+  outputs.tf        # Buckets, PVCs SFS, quickstart
   terraform.tfvars.example  # Template credentials (ne pas committer terraform.tfvars)
 
 nextflow/

@@ -61,191 +61,16 @@ resource "kubernetes_cluster_role_binding" "nextflow" {
   }
 }
 
-# ── NFS Server in-cluster ─────────────────────────────────────────────────────
+# ── Stockage partagé via Scaleway File Storage CSI (sfs-standard, RWX) ────────
 #
-# scaleway_block_volume_attachment n'existe pas dans le provider 2.76.
-# On déploie nfs-server comme pod K8s avec un PVC scw-bssd (RWO, SBS natif
-# Kapsule). Le PVC est provisionné dynamiquement par le CSI driver bs.csi.scaleway.com.
+# Le driver filestorage.csi.scaleway.com est préinstallé sur Kapsule et activé
+# par le tag scw-filestorage-csi au niveau du cluster (voir cluster.tf).
+# Il provisionne dynamiquement des volumes SFS en ReadWriteMany — tous les pods
+# task Nextflow (sur N nœuds compute) montent le même volume simultanément,
+# sans serveur NFS intermédiaire.
 #
-# Accès depuis kubelet : Cilium sur Kapsule utilise des hooks eBPF cgroup-level
-# qui interceptent les connexions ClusterIP depuis le namespace hôte (kubelet).
-# Les mounts NFS depuis le kubelet via ClusterIP sont donc supportés.
-#
-# Performance : scw-bssd VirtioFS, 2 500 GB → ~32 000 IOPS / ~250 MB/s.
-
-resource "kubernetes_persistent_volume_claim" "nfs_backing" {
-  metadata {
-    name      = "nfs-server-data"
-    namespace = kubernetes_namespace.bioinformatics.metadata[0].name
-    annotations = {
-      "description" = "Backing storage SBS pour le serveur NFS in-cluster — workdir + reference"
-    }
-  }
-  spec {
-    access_modes       = ["ReadWriteOnce"]
-    storage_class_name = "scw-bssd"
-    resources {
-      requests = {
-        storage = "${var.workdir_size_gb + var.reference_size_gb}Gi"
-      }
-    }
-  }
-  wait_until_bound = false
-}
-
-resource "kubernetes_deployment" "nfs_server" {
-  metadata {
-    name      = "nfs-server"
-    namespace = kubernetes_namespace.bioinformatics.metadata[0].name
-    labels    = { app = "nfs-server" }
-  }
-  spec {
-    replicas = 1
-    selector {
-      match_labels = { app = "nfs-server" }
-    }
-    # Recreate pour éviter deux pods en simultané sur le même PVC RWO
-    strategy {
-      type = "Recreate"
-    }
-    template {
-      metadata {
-        labels = { app = "nfs-server" }
-      }
-      spec {
-        # Pinné sur le pool orchestrator (toujours actif, min_size=1)
-        node_selector = {
-          "k8s.scaleway.com/pool-name" = "orchestrator"
-        }
-
-        # Crée les sous-répertoires avant que nfs-server démarre
-        init_container {
-          name              = "init-dirs"
-          image             = "busybox:1.36"
-          image_pull_policy = "IfNotPresent"
-          command           = ["sh", "-c", "mkdir -p /data/workdir /data/reference && chmod 777 /data/workdir /data/reference"]
-          volume_mount {
-            name       = "nfs-data"
-            mount_path = "/data"
-          }
-        }
-
-        container {
-          name              = "nfs"
-          image             = "erichough/nfs-server:2.2.1"
-          image_pull_policy = "IfNotPresent"
-
-          # Exports NFSv4 : /data est la racine (fsid=0), /data/workdir et
-          # /data/reference exposés comme chemins absolus pour NFSv3 et NFSv4.
-          env {
-            name  = "NFS_EXPORT_0"
-            value = "/data *(rw,fsid=0,no_subtree_check,no_auth_nlm,insecure,no_root_squash)"
-          }
-          env {
-            name  = "NFS_EXPORT_1"
-            value = "/data/workdir *(rw,nohide,no_subtree_check,no_auth_nlm,insecure,no_root_squash)"
-          }
-          env {
-            name  = "NFS_EXPORT_2"
-            value = "/data/reference *(rw,nohide,no_subtree_check,no_auth_nlm,insecure,no_root_squash)"
-          }
-
-          # Requis pour charger les modules NFS du kernel hôte
-          security_context {
-            privileged = true
-            capabilities {
-              add = ["SYS_ADMIN", "SETPCAP"]
-            }
-          }
-
-          port {
-            name           = "nfs"
-            container_port = 2049
-            protocol       = "TCP"
-          }
-          port {
-            name           = "nfs-portmap"
-            container_port = 111
-            protocol       = "UDP"
-          }
-
-          volume_mount {
-            name       = "nfs-data"
-            mount_path = "/data"
-          }
-        }
-
-        volume {
-          name = "nfs-data"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.nfs_backing.metadata[0].name
-          }
-        }
-      }
-    }
-  }
-
-  depends_on = [kubernetes_persistent_volume_claim.nfs_backing]
-
-  timeouts {
-    create = "10m"
-  }
-}
-
-# Service ClusterIP stable — kubelet monte l'IP ClusterIP via Cilium eBPF
-resource "kubernetes_service" "nfs_server" {
-  metadata {
-    name      = "nfs-server"
-    namespace = kubernetes_namespace.bioinformatics.metadata[0].name
-  }
-  spec {
-    selector = { app = "nfs-server" }
-    port {
-      name        = "nfs"
-      port        = 2049
-      target_port = 2049
-      protocol    = "TCP"
-    }
-    port {
-      name        = "nfs-portmap"
-      port        = 111
-      target_port = 111
-      protocol    = "UDP"
-    }
-  }
-  depends_on = [kubernetes_deployment.nfs_server]
-}
-
-# ── PersistentVolumes NFS (serveur NFS in-cluster) ────────────────────────────
-#
-# nfs.server = ClusterIP du service nfs-server (résolu après création du Service).
-# Les mount options NFSv4 évitent rpcbind et améliorent le débit bioinformatique.
-
-resource "kubernetes_persistent_volume" "workdir" {
-  metadata {
-    name = "nf-workdir-pv"
-    labels = {
-      "volume-type" = "nf-workdir"
-    }
-  }
-  spec {
-    capacity = {
-      storage = "${var.workdir_size_gb}Gi"
-    }
-    access_modes                     = ["ReadWriteMany"]
-    persistent_volume_reclaim_policy = "Retain"
-    storage_class_name               = ""
-    mount_options                    = ["nfsvers=4", "rsize=1048576", "wsize=1048576", "hard", "intr"]
-    persistent_volume_source {
-      nfs {
-        server    = kubernetes_service.nfs_server.spec[0].cluster_ip
-        path      = "/data/workdir"
-        read_only = false
-      }
-    }
-  }
-  depends_on = [kubernetes_service.nfs_server]
-}
+# Taille minimale SFS : 25 GB. Performance : proportionnelle à la taille
+# provisionnée (IOPS et débit scalent linéairement).
 
 resource "kubernetes_persistent_volume_claim" "workdir" {
   metadata {
@@ -254,40 +79,14 @@ resource "kubernetes_persistent_volume_claim" "workdir" {
   }
   spec {
     access_modes       = ["ReadWriteMany"]
-    storage_class_name = ""
-    volume_name        = kubernetes_persistent_volume.workdir.metadata[0].name
+    storage_class_name = "sfs-standard"
     resources {
       requests = {
         storage = "${var.workdir_size_gb}Gi"
       }
     }
   }
-}
-
-resource "kubernetes_persistent_volume" "reference" {
-  metadata {
-    name = "nf-reference-pv"
-    labels = {
-      "volume-type" = "nf-reference"
-    }
-  }
-  spec {
-    capacity = {
-      storage = "${var.reference_size_gb}Gi"
-    }
-    access_modes                     = ["ReadWriteMany"]
-    persistent_volume_reclaim_policy = "Retain"
-    storage_class_name               = ""
-    mount_options                    = ["nfsvers=4", "rsize=1048576", "wsize=1048576", "hard", "intr"]
-    persistent_volume_source {
-      nfs {
-        server    = kubernetes_service.nfs_server.spec[0].cluster_ip
-        path      = "/data/reference"
-        read_only = false
-      }
-    }
-  }
-  depends_on = [kubernetes_service.nfs_server]
+  wait_until_bound = false
 }
 
 resource "kubernetes_persistent_volume_claim" "reference" {
@@ -297,14 +96,14 @@ resource "kubernetes_persistent_volume_claim" "reference" {
   }
   spec {
     access_modes       = ["ReadWriteMany"]
-    storage_class_name = ""
-    volume_name        = kubernetes_persistent_volume.reference.metadata[0].name
+    storage_class_name = "sfs-standard"
     resources {
       requests = {
         storage = "${var.reference_size_gb}Gi"
       }
     }
   }
+  wait_until_bound = false
 }
 
 # ── StorageClass — scratch haute IOPS par job STAR (SBS dynamique) ─────────────
@@ -361,5 +160,6 @@ resource "kubernetes_config_map" "nextflow_config" {
     kubernetes_persistent_volume_claim.workdir,
     kubernetes_persistent_volume_claim.reference,
     kubernetes_storage_class.star_scratch,
+    scaleway_k8s_pool.orchestrator,
   ]
 }
