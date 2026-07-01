@@ -23,8 +23,10 @@ launch_nextflow_job() {
     -profile "$profile"
     --input "$input"
     --outdir "$outdir"
-    -resume
   )
+  # Activer -resume seulement si NXF_RESUME=1 (désactivé par défaut pour éviter
+  # les faux hits de cache quand un workdir amont est corrompu ou incomplet).
+  [[ "${NXF_RESUME:-0}" == "1" ]] && nf_args+=(-resume)
   config_args=(create configmap "$config_name" -n bioinformatics
     --from-file=nextflow.config="${REPO_ROOT}/nextflow/nextflow.config")
 

@@ -6,17 +6,27 @@
 # Samplesheet CSV au format nf-core :
 # sample,fastq_1,fastq_2,strandedness
 # S001,s3://nf-kapsule-input/S001_R1.fastq.gz,s3://nf-kapsule-input/S001_R2.fastq.gz,auto
-input: "s3://nf-kapsule-input/run-20260701/samplesheet.csv"
+# SRR1039508 : human airway smooth muscle cells (Himes et al. 2014, Bioconductor airway)
+# 50K reads PE 63 bp, TruSeq RNA non-stranded, aligne sur GRCh38.
+# Remplace SRR6357070 (nf-core test-datasets = levure synthétique, taxid|4932, n'aligne pas sur GRCh38).
+input: "s3://nf-kapsule-input/samplesheet.csv"
 
 # ── Génome de référence ───────────────────────────────────────────────────────
 # Option A : laisser nf-core télécharger et indexer (~4-6h supplémentaires par run)
 # genome: "GRCh38"
 
-# Option B : index STAR pré-généré via make upload-reference (recommandé)
-# Index actif : GRCh38 Ensembl 110, sjdbOverhang=149 (read_length=150)
-star_index: "/data/reference/star_index/GRCh38_150bp"
+# Option A : nf-core génère l'index via STAR_GENOMEGENERATE (version STAR cohérente)
+# L'index est écrit dans le workdir SFS et mis en cache par Nextflow (-resume).
+# STAR_ALIGN_IGENOMES (container STAR 2.6.1d) est appelé uniquement quand star_index
+# est fourni ici — incompatible avec un index construit par STAR 2.7.x.
 gtf: "/data/reference/gtf/genes.gtf"
 fasta: "/data/reference/fasta/genome.fa"
+
+# Option B : index STAR pré-généré — index construit PAR nf-core STAR_GENOMEGENERATE_IGENOMES
+# (même container STAR 2.6.1d que STAR_ALIGN_IGENOMES → compatible).
+# Fournir star_index change le hash d'input et force le re-run de STAR_ALIGN sans toucher
+# au cache SQLite Nextflow. Ne PAS utiliser l'index bootstrap (STAR 2.7.10b → exit 102).
+star_index: "/data/workdir/e6/f008e9f80442ab81aab5e09dbdf4a7/star"
 
 # ── Répertoire de sortie ──────────────────────────────────────────────────────
 outdir: "s3://nf-kapsule-results/run-20260701"
@@ -29,7 +39,14 @@ outdir: "s3://nf-kapsule-results/run-20260701"
 
 # ── Aligneur ──────────────────────────────────────────────────────────────────
 aligner: "star_salmon"   # STAR pour l'alignement + Salmon pour la quantification
-pseudo_aligner: "salmon"
+# Sur de vrais FASTQs NovaSeq (millions de reads), le seuil par défaut de 10
+# fragments assignés est toujours atteint. Pour le dataset test SRR6357070
+# (2 MB, ~20k reads), le BAM transcriptome est trop sparse → forcer à 1.
+extra_salmon_quant_args: "--minAssignedFrags 1"
+# pseudo_aligner désactivé : avec aligner=star_salmon, salmon quant tourne déjà
+# sur les BAM STAR. Le pathway QUANTIFY_PSEUDO_ALIGNMENT (salmon sur reads bruts)
+# échoue sur les petits datasets (< 10 fragments assignés → exit 1).
+# Sur de vrais FASTQs NovaSeq, réactiver si tu veux une quantification indépendante.
 
 # ── Limites ressources ────────────────────────────────────────────────────────
 # max_cpus / max_memory définis dans nextflow.config (params block).
