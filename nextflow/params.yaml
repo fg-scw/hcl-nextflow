@@ -22,14 +22,19 @@ input: "s3://nf-kapsule-input/samplesheet.csv"
 gtf: "/data/reference/gtf/genes.gtf"
 fasta: "/data/reference/fasta/genome.fa"
 
-# Option B : index STAR pré-généré — index construit PAR nf-core STAR_GENOMEGENERATE_IGENOMES
-# (même container STAR 2.6.1d que STAR_ALIGN_IGENOMES → compatible).
-# Fournir star_index change le hash d'input et force le re-run de STAR_ALIGN sans toucher
-# au cache SQLite Nextflow. Ne PAS utiliser l'index bootstrap (STAR 2.7.10b → exit 102).
-star_index: "/data/workdir/e6/f008e9f80442ab81aab5e09dbdf4a7/star"
+# Option B : index STAR pré-généré — NE FOURNIR QUE L'INDEX CONSTRUIT PAR nf-core.
+# Le chemin ci-dessous est spécifique au workdir SFS d'un cluster donné.
+# Sur un nouveau cluster : laisser commenté → nf-core génère l'index automatiquement
+# via STAR_GENOMEGENERATE_IGENOMES (même container STAR 2.6.1d → compatible).
+# Une fois l'index généré, retrouver son chemin dans le workdir SFS et le définir ici
+# pour les runs suivants (évite de régénérer ~1-2h à chaque fois).
+# NE PAS utiliser l'index bootstrap de make upload-reference (STAR 2.7.10b → exit 102).
+# star_index: "/data/workdir/<hash>/star"   # à renseigner après le premier run
 
 # ── Répertoire de sortie ──────────────────────────────────────────────────────
-outdir: "s3://nf-kapsule-results/run-20260701"
+# Adapter la date/identifiant à chaque run. run-pipeline.sh génère un outdir
+# dynamique (s3://nf-kapsule-results/run-DATE) qui écrase cette valeur.
+outdir: "s3://nf-kapsule-results/run-DATE"
 
 # ── Paramètres séquençage ─────────────────────────────────────────────────────
 # Illumina NovaSeq 6000 S4 — bulk RNA-seq, read_length=150 bp

@@ -103,24 +103,16 @@ make smoke-test
 #    L'index (~28 Go) est conservé dans nf-reference-pvc — ne pas relancer entre les runs.
 make upload-reference
 
-# 7. Uploader les FASTQ réels dans S3 (voir section "Accès aux données source")
-#    ⚠️  Les FASTQs du smoke test (SRR6357070) sont dans s3://<input-bucket>/smoke/
-#        et ne sont PAS sur ta machine (supprimés localement après upload par smoke-test.sh)
-ACCESS_KEY=$(kubectl get secret pipeline-s3-credentials -n bioinformatics \
-  -o jsonpath='{.data.access-key}' | base64 -d)
-SECRET_KEY=$(kubectl get secret pipeline-s3-credentials -n bioinformatics \
-  -o jsonpath='{.data.secret-key}' | base64 -d)
-RUN_ID="run-$(date +%Y%m%d)"
-AWS_ACCESS_KEY_ID="$ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$SECRET_KEY" \
-aws --endpoint-url https://s3.fr-par.scw.cloud \
-    s3 sync /nas/fastq/run-DATE/ s3://nf-kapsule-input/$RUN_ID/ --no-progress
+# 7. Préparer les données de démonstration dans S3 (SRR1039508, human GRCh38-compatible)
+#    ⚠️  Les FASTQs du smoke test (SRR6357070) sont de la levure (taxid|4932) — ils ne s'alignent pas sur GRCh38.
+#    make prepare-demo télécharge SRR1039508 (Himes et al. 2014, human airway, ~5 min) et crée la samplesheet.
+make prepare-demo
 
-# 8. Créer la samplesheet et l'uploader (voir section "Accès aux données source")
-# puis adapter nextflow/params.yaml :
-#   input:  "s3://nf-kapsule-input/run-DATE/samplesheet.csv"
+# 8. Pour les vrais FASTQs NovaSeq, uploader à la place (voir section "Accès aux données source")
+# et adapter nextflow/params.yaml :
 #   outdir: "s3://nf-kapsule-results/run-DATE"
-#   (star_index déjà activé après make upload-reference)
-vi nextflow/params.yaml
+#   star_index: commenté sur un nouveau cluster (nf-core génère l'index au 1er run)
+vi nextflow/params.yaml   # (optionnel : adapter outdir)
 
 # 9. Lancer le pipeline
 make run-pipeline
@@ -296,15 +288,36 @@ Les fichiers génome et GTF sont permanents sur le PVC SFS. L'index STAR de nf-c
 
 ---
 
+### Étape 2b — Préparer les données de démonstration : `make prepare-demo`
+
+```
+$ make prepare-demo
+```
+
+Le script `prepare-demo.sh` télécharge les 50 000 premières paires de reads de **SRR1039508** depuis ENA (Himes et al. 2014 — human airway smooth muscle cells, HiSeq 2000, TruSeq RNA non-stranded, 63 bp PE) et les uploade dans le bucket S3 input avec une samplesheet prête à l'emploi.
+
+> **Pourquoi SRR1039508 ?** Les FASTQs du smoke test (`testdata/GSE110004/SRR6357070`) ont `kraken:taxid|4932` dans leurs headers : ce sont des reads de *Saccharomyces cerevisiae* (levure synthétique), conçus pour le profil `test` nf-core avec le génome R64-1-1. Ils ne s'alignent **pas** sur GRCh38. SRR1039508 est un dataset humain largement utilisé pour valider les pipelines RNA-seq.
+
+```
+Durée réelle  : ~5 min (download ENA + upload S3)
+Sortie S3     : s3://<input-bucket>/smoke/SRR1039508_{1,2}.fastq.gz
+Samplesheet   : s3://<input-bucket>/samplesheet.csv
+Strandedness  : unstranded
+```
+
+Pour les vrais FASTQs NovaSeq, cette étape est remplacée par l'upload direct depuis le NAS (voir section "Accès aux données source").
+
+---
+
 ### Étape 3 — Run pipeline complet : `make run-pipeline`
 
 ```
 $ make run-pipeline
 ```
 
-**Dataset de validation :** SRR1039508 (Himes et al. 2014 — human airway smooth muscle cells, HiSeq 2000, TruSeq RNA non-stranded, 50 000 reads PE ~63 bp, GRCh38).
+**Prérequis :** `make prepare-demo` doit avoir été exécuté (samplesheet et FASTQs SRR1039508 dans S3), ou les FASTQs NovaSeq réels uploadés à la place.
 
-> **Pourquoi SRR1039508 et pas SRR6357070 ?** Les FASTQs nf-core (`testdata/GSE110004/SRR6357070`) ont `kraken:taxid|4932` dans leurs headers : ce sont des reads de *Saccharomyces cerevisiae* (levure synthétique), conçus pour le profil `test` nf-core avec le génome R64-1-1. Ils ne s'alignent pas sur GRCh38 (100% "too short"). SRR1039508 est un dataset humain classique largement utilisé pour valider les pipelines RNA-seq.
+**Dataset de validation :** SRR1039508 (Himes et al. 2014 — human airway smooth muscle cells, HiSeq 2000, TruSeq RNA non-stranded, 50 000 reads PE ~63 bp, GRCh38).
 
 #### Résultats étape par étape
 
@@ -451,6 +464,7 @@ make kubeconfig        # Installer le kubeconfig → ~/.kube/config-nf-kapsule
 make status            # État nœuds + PVCs + pods
 make smoke-test        # Dataset officiel nf-core, upload et exécution automatiques
 make upload-reference  # Générer l'index STAR dans le volume reference
+make prepare-demo      # Télécharger SRR1039508 (human, GRCh38) et uploader dans S3
 make run-pipeline      # Lancer nf-core/rnaseq via Nextflow executor k8s
 make watch-nodes       # Surveiller les nœuds compute (autoscaling)
 make watch-pods        # Pods du namespace bioinformatics en temps réel
@@ -517,7 +531,7 @@ Le provider `kubernetes` (`terraform/main.tf`) lit `~/.kube/config-nf-kapsule`, 
 
 **Params invalides en v3.14.0** : `--read_length` et `--strandedness` ne sont plus des paramètres top-level valides dans nf-core/rnaseq v3.14.0 (déplacés au niveau de la samplesheet, colonne `strandedness`). Les inclure dans `params.yaml` génère des WARNs non-bloquants mais pollue les logs. Retirés de `params.yaml` — la longueur de lecture est implicite dans l'index STAR pré-généré (`sjdbOverhang=149` pour 150 bp).
 
-**Index STAR pré-généré** : après `make upload-reference`, pointer `star_index: "/data/reference/star_index/GRCh38_150bp"` dans `params.yaml` pour éviter de regénérer l'index (~4-6h) à chaque run.
+**Index STAR et nouveau cluster** : sur un **nouveau cluster**, laisser `star_index` commenté dans `params.yaml`. nf-core lancera `STAR_GENOMEGENERATE_IGENOMES` (STAR 2.6.1d — même container que `STAR_ALIGN_IGENOMES`) et placera l'index dans le workdir SFS. Après le premier run, retrouver le chemin de l'index généré (`kubectl exec` dans un pod ou `aws s3 ls`) et le renseigner dans `params.yaml` pour les runs suivants. ⚠️ Ne pas utiliser l'index bootstrap de `make upload-reference` (STAR 2.7.10b → incompatible → exit 102 au chargement).
 
 ---
 

@@ -6,7 +6,7 @@ NAMESPACE     := bioinformatics
 
 export KUBECONFIG
 
-.PHONY: init cluster deploy-and-smoke kubeconfig status upload-reference smoke-test run-pipeline clean \
+.PHONY: init cluster deploy-and-smoke kubeconfig status upload-reference prepare-demo smoke-test run-pipeline clean \
         watch-pods watch-nodes scale-check logs-autoscaler fmt outputs
 
 # ── Infrastructure ────────────────────────────────────────────────────────────
@@ -52,6 +52,9 @@ clean: ## Destroy complet (⚠ supprime cluster, données S3 et volumes SFS)
 
 upload-reference: ## Générer l'index STAR GRCh38 dans le PVC reference (one-shot, ~4-6h)
 	bash $(SCRIPTS_DIR)/bootstrap-reference.sh
+
+prepare-demo: ## Télécharger SRR1039508 (human, GRCh38) et uploader dans S3 (avant make run-pipeline)
+	bash $(SCRIPTS_DIR)/prepare-demo.sh
 
 smoke-test: ## Tester automatiquement S3 → Kapsule → nf-core/rnaseq → S3
 	bash $(SCRIPTS_DIR)/smoke-test.sh
