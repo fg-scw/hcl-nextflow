@@ -6,7 +6,7 @@ NAMESPACE     := bioinformatics
 
 export KUBECONFIG
 
-.PHONY: init cluster kubeconfig status upload-reference run-pipeline clean \
+.PHONY: init cluster deploy-and-smoke kubeconfig status upload-reference smoke-test run-pipeline clean \
         watch-pods watch-nodes scale-check logs-autoscaler fmt outputs
 
 # ── Infrastructure ────────────────────────────────────────────────────────────
@@ -31,6 +31,8 @@ cluster: ## Déployer le cluster Kapsule + node pools + SFS + S3 + IAM + K8s res
 	@echo "=== Phase 2 : ressources Kubernetes (namespace, RBAC, PVCs, ConfigMap) ==="
 	$(TF) apply -var-file=terraform.tfvars -auto-approve
 
+deploy-and-smoke: init cluster smoke-test ## Déployer l'infrastructure puis lancer le test bout-en-bout
+
 kubeconfig: ## Configurer kubectl avec le kubeconfig du cluster
 	@CLUSTER_ID=$$($(TF) output -raw cluster_id) && \
 	scw k8s kubeconfig install $$CLUSTER_ID
@@ -50,6 +52,9 @@ clean: ## Destroy complet (⚠ supprime cluster, données S3 et volumes SFS)
 
 upload-reference: ## Générer l'index STAR GRCh38 dans le PVC reference (one-shot, ~4-6h)
 	bash $(SCRIPTS_DIR)/bootstrap-reference.sh
+
+smoke-test: ## Tester automatiquement S3 → Kapsule → nf-core/rnaseq → S3
+	bash $(SCRIPTS_DIR)/smoke-test.sh
 
 run-pipeline: ## Lancer nf-core/rnaseq sur le cluster Kapsule
 	bash $(SCRIPTS_DIR)/run-pipeline.sh

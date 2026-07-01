@@ -61,8 +61,10 @@ Le stockage partagé utilise le **CSI driver SFS natif Kapsule** (`filestorage.c
 
 - Terraform ≥ 1.5
 - Scaleway CLI (`scw`) configuré
+- AWS CLI (`aws`)
+- `curl`
+- `jq`
 - `kubectl`
-- Nextflow ≥ 23.10 (pour le profil k8s)
 - Un compte Scaleway avec accès au projet cible
 
 ---
@@ -83,6 +85,9 @@ cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 make init
 make cluster
 
+# Alternative en une commande : déploiement + smoke test officiel nf-core
+# make deploy-and-smoke
+
 # 3. Configurer kubectl
 make kubeconfig
 kubectl get nodes
@@ -91,21 +96,24 @@ kubectl get nodes
 kubectl get daemonset -n kube-system filestorage-csi-node   # doit être Running
 kubectl get pvc -n bioinformatics                           # doit être Bound
 
-# 5. Générer l'index STAR GRCh38 (one-shot, ~4-6h)
+# 5. Valider automatiquement S3 → Kapsule → nf-core/rnaseq → S3
+make smoke-test
+
+# 6. Générer l'index STAR GRCh38 pour les vrais runs (one-shot, ~4-6h)
 make upload-reference
 
-# 6. Uploader les FASTQ dans S3
+# 7. Uploader les vrais FASTQ dans S3
 INPUT_BUCKET=$(terraform -chdir=terraform output -raw input_bucket_name)
 aws --endpoint-url https://s3.fr-par.scw.cloud \
-    s3 sync /local/fastq/ s3://$INPUT_BUCKET/
+    s3 sync /chemin/reel/vers/fastq/ s3://$INPUT_BUCKET/
 
-# 7. Adapter les paramètres du run
+# 8. Adapter les paramètres du run
 vi nextflow/params.yaml   # input, outdir, star_index si pré-généré
 
-# 8. Lancer le pipeline
+# 9. Lancer le pipeline
 make run-pipeline
 
-# 9. Surveiller le scaling
+# 10. Surveiller le scaling
 make watch-nodes   # nœuds compute qui scale up/down
 make watch-pods    # pods du namespace bioinformatics
 ```
@@ -117,8 +125,10 @@ make watch-pods    # pods du namespace bioinformatics
 ```bash
 make init              # terraform init
 make cluster           # Déployer toute l'infrastructure
+make deploy-and-smoke  # Initialiser, déployer et exécuter le smoke test
 make kubeconfig        # Installer le kubeconfig → ~/.kube/config-nf-kapsule
 make status            # État nœuds + PVCs + pods
+make smoke-test        # Dataset officiel nf-core, upload et exécution automatiques
 make upload-reference  # Générer l'index STAR dans le volume reference
 make run-pipeline      # Lancer nf-core/rnaseq via Nextflow executor k8s
 make watch-nodes       # Surveiller les nœuds compute (autoscaling)
@@ -128,6 +138,10 @@ make logs-autoscaler   # Logs du Cluster Autoscaler
 make outputs           # Afficher les outputs Terraform (buckets, IPs, etc.)
 make clean             # terraform destroy (⚠ supprime cluster et données)
 ```
+
+`make smoke-test` et `make run-pipeline` créent un Job head dans le pool
+`orchestrator` avec l'image `nextflow/nextflow:25.10.4`. Java et Nextflow ne
+sont donc pas requis sur le poste local.
 
 ---
 
