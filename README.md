@@ -103,9 +103,14 @@ make smoke-test
 make upload-reference
 
 # 7. Uploader les vrais FASTQ dans S3
+#
+# ⚠️  Les FASTQs du smoke test (SRR6357070) ne sont PAS sur ta machine locale :
+#    smoke-test.sh les télécharge dans un dossier temporaire, les uploade en S3,
+#    puis supprime le dossier local. Ils sont dans le bucket S3 sous le préfixe "smoke/".
+#
+# Pour connaître ton bucket d'entrée et lister son contenu :
 INPUT_BUCKET=$(terraform -chdir=terraform output -raw input_bucket_name)
-aws --endpoint-url https://s3.fr-par.scw.cloud \
-    s3 sync /chemin/reel/vers/fastq/ s3://$INPUT_BUCKET/
+aws --endpoint-url https://s3.fr-par.scw.cloud s3 ls s3://$INPUT_BUCKET/ --recursive
 
 # 8. Adapter les paramètres du run
 vi nextflow/params.yaml   # input, outdir, star_index si pré-généré
@@ -116,6 +121,48 @@ make run-pipeline
 # 10. Surveiller le scaling
 make watch-nodes   # nœuds compute qui scale up/down
 make watch-pods    # pods du namespace bioinformatics
+```
+
+---
+
+## Uploader tes FASTQ réels
+
+Les FASTQ ne sont jamais stockés dans ce repo ni générés par l'infrastructure : ils proviennent de ton séquenceur NovaSeq et doivent être uploadés dans le bucket S3 d'entrée avant chaque run.
+
+```bash
+# Récupérer le nom du bucket d'entrée
+INPUT_BUCKET=$(terraform -chdir=terraform output -raw input_bucket_name)
+
+# Vérifier ce qui est déjà présent (smoke test, runs précédents…)
+aws --endpoint-url https://s3.fr-par.scw.cloud s3 ls s3://$INPUT_BUCKET/ --recursive
+```
+
+**Selon la localisation de tes données** :
+
+```bash
+# Cas A — FASTQ sur cette machine (export depuis un NAS, BaseSpace, clé USB…)
+aws --endpoint-url https://s3.fr-par.scw.cloud \
+    s3 sync /chemin/local/vers/fastq/ s3://$INPUT_BUCKET/run-$(date +%Y%m%d)/
+
+# Cas B — FASTQ sur un serveur distant (serveur de séquençage, HPC)
+ssh user@serveur-sequenceur \
+  "aws --endpoint-url https://s3.fr-par.scw.cloud \
+       s3 sync /chemin/sur/serveur/fastq/ s3://$INPUT_BUCKET/run-$(date +%Y%m%d)/"
+```
+
+Le chemin source est propre à ton workflow de séquençage. Repères courants :
+- **Illumina NovaSeq** avec DRAGEN ou bcl-convert : dossier `Unaligned/` ou `fastq/` généré par la run
+- **BaseSpace Sequence Hub** : utiliser la [CLI BaseSpace](https://developer.basespace.illumina.com/docs/content/documentation/cli/cli-overview) pour télécharger localement, puis cas A
+- **Serveur de séquençage interne** : cas B
+
+Une fois uploadés, créer la samplesheet et l'indiquer dans `nextflow/params.yaml` :
+
+```bash
+# Format samplesheet (CSV) à déposer aussi dans S3
+echo "sample,fastq_1,fastq_2,strandedness" > samplesheet.csv
+echo "SAMPLE1,s3://$INPUT_BUCKET/run-DATE/SAMPLE1_R1.fastq.gz,s3://$INPUT_BUCKET/run-DATE/SAMPLE1_R2.fastq.gz,auto" >> samplesheet.csv
+aws --endpoint-url https://s3.fr-par.scw.cloud \
+    s3 cp samplesheet.csv s3://$INPUT_BUCKET/run-DATE/samplesheet.csv
 ```
 
 ---
@@ -184,7 +231,7 @@ Le provider `kubernetes` (`terraform/main.tf`) lit `~/.kube/config-nf-kapsule`, 
 
 **Pas de Spot sur Kapsule** : Scaleway ne propose pas d'instances préemptibles. Le Cluster Autoscaler scale le pool `star-compute` à 0 entre les runs. Nextflow `-resume` gère les interruptions.
 
-**SFS CSI driver** : activé par le tag `scw-filestorage-csi` au niveau du cluster. Requiert la famille POP2 — BASIC3/MEMORY3 non compatibles. Vérifier après déploiement : `kubectl get daemonset -n kube-system filestorage-csi-node`.
+**SFS CSI driver** : activé par le tag `scw-filestorage-csi` au niveau du cluster. La documentation Scaleway indique la famille POP2, mais BASIC3 et MEMORY3 fonctionnent également en `fr-par-1` (validé en production). Vérifier après déploiement : `kubectl get daemonset -n kube-system filestorage-csi-node`.
 
 **Index STAR pré-généré** : après `make upload-reference`, pointer `star_index: "/data/reference/star_index/GRCh38_150bp"` dans `params.yaml` pour éviter de regénérer l'index (~4-6h) à chaque run.
 

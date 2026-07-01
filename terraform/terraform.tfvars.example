@@ -14,9 +14,10 @@ k8s_version     = "1.35.3"
 
 # ── Compute ───────────────────────────────────────────────────────────────────
 # POP2 fr-par-1 (requis pour SFS CSI) : 1 job STAR à 7 CPU/52 GB par nœud 8 vCPU
-orchestrator_node_type = "POP2-4C-16G"
-compute_node_type      = "POP2-HM-8C-64G"
-compute_max_nodes      = 10
+orchestrator_node_type  = "POP2-4C-16G"
+orchestrator_max_nodes  = 5    # 5 nœuds × 2 tâches/nœud = 10 tâches non-STAR en parallèle
+compute_node_type       = "POP2-HM-8C-64G"
+compute_max_nodes       = 10
 
 # Variante production (meilleur packing, même famille POP2) :
 # compute_node_type  = "POP2-HM-32C-256G"   # 4 jobs/nœud → compute_max_nodes = 3

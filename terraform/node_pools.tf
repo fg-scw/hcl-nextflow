@@ -9,7 +9,7 @@ resource "scaleway_k8s_pool" "orchestrator" {
   node_type   = var.orchestrator_node_type
   size        = 1
   min_size    = 1
-  max_size    = 2
+  max_size    = var.orchestrator_max_nodes
   autoscaling = true
   autohealing = true
   region      = var.scaleway_region

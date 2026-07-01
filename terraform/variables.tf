@@ -56,6 +56,22 @@ variable "compute_node_type" {
   EOD
 }
 
+variable "orchestrator_max_nodes" {
+  type        = number
+  default     = 5
+  description = <<-EOD
+    Max nœuds orchestrator : les tâches non-STAR (FastQC, Trim, Salmon, QC…) s'exécutent
+    sur ce pool. Pour 300-400 samples, augmenter selon le type de nœud :
+    - BASIC3-X4C-16G  : ~2 tâches/nœud (cpus=2/memory=8 GB) → 5 nœuds = 10 tâches parallèles
+    - POP2-4C-16G     : idem
+    À 1 (valeur smoke) le pipeline réel sature rapidement.
+  EOD
+  validation {
+    condition     = var.orchestrator_max_nodes >= 1 && var.orchestrator_max_nodes <= 20
+    error_message = "orchestrator_max_nodes doit être entre 1 et 20."
+  }
+}
+
 variable "compute_max_nodes" {
   type        = number
   default     = 10
