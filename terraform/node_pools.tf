@@ -29,10 +29,10 @@ resource "scaleway_k8s_pool" "orchestrator" {
 
 # ── Pool compute — jobs STAR (scale-to-zero entre les runs) ───────────────────
 #
-# MEMORY3-X64C-512G : 64 vCPU / 512 GB RAM
-# Packing : 4 jobs STAR simultanés par nœud (16 vCPU + 48 GB chacun).
-# Série MEMORY3 : ratio 8 GB/vCPU — dimensionné pour l'empreinte mémoire de
-# l'index génomique STAR (GRCh38 = 30-32 GB, chargé en RAM intégralement).
+# POC : MEMORY3-X8C-64G (8 vCPU / 64 GB) — 1 job STAR par nœud (7 vCPU / 52 GB).
+# Alternative prod : MEMORY3-X32C-256G (4 jobs/nœud) ou POP2-HM-32C-256G.
+# L'index GRCh38 (~32 GB) est chargé intégralement en RAM — 52 GB/job est le minimum
+# validé (40 GB strict minimum, STAR échoue silencieusement en dessous).
 #
 # Note Spot : Scaleway Kapsule ne propose pas d'instances Spot/Préemptibles.
 # Le scale-to-zero (min=0) est le mécanisme d'économie principal :

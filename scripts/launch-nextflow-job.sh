@@ -59,12 +59,14 @@ launch_nextflow_job() {
           {name: "NXF_HOME", value: "/data/workdir/.nextflow"}
         ] |
         .spec.template.spec.containers[0].volumeMounts = [
-          {name: "workdir", mountPath: "/data/workdir"},
-          {name: "config", mountPath: "/config", readOnly: true}
+          {name: "workdir",    mountPath: "/data/workdir"},
+          {name: "reference",  mountPath: "/data/reference", readOnly: true},
+          {name: "config",     mountPath: "/config",         readOnly: true}
         ] |
         .spec.template.spec.volumes = [
-          {name: "workdir", persistentVolumeClaim: {claimName: "nf-workdir-pvc"}},
-          {name: "config", configMap: {name: $config_name}}
+          {name: "workdir",   persistentVolumeClaim: {claimName: "nf-workdir-pvc"}},
+          {name: "reference", persistentVolumeClaim: {claimName: "nf-reference-pvc"}},
+          {name: "config",    configMap: {name: $config_name}}
         ]' \
     | kubectl apply -f - >/dev/null
 
